@@ -113,12 +113,18 @@ async def websocket_endpoint(websocket: WebSocket):
     global msg
     while True:
         gamepad_info = await websocket.receive_json()
-        
+
         for i in range(len(gamepad_info["axes"])):
-            msg.axes[i] = gamepad_info["axes"][i]
+            if (len(msg.axes) <= i):
+                msg.axes.append(gamepad_info["axes"][i])
+            else:
+                msg.axes[i] = gamepad_info["axes"][i]
 
         for i in range(len(gamepad_info["buttons"])):
-            msg.buttons[i] = gamepad_info["buttons"][i]
+            if (len(msg.buttons) <= i):
+                msg.buttons.append(gamepad_info["buttons"][i])
+            else:
+                msg.buttons[i] = gamepad_info["buttons"][i]
         
 def web_start():
     print("boot webserver thread")
@@ -134,13 +140,6 @@ class JoyNodeWeb(Node):
         qos_profile = QoSProfile(depth=10)
         self.timer = self.create_timer(0.05, self.update_joy)
         self.pub = self.create_publisher(Joy, "/joy", qos_profile=qos_profile)
-        self.axes_num = 15
-        self.buttons_num = 15
-        global msg
-        for i in range(self.axes_num):
-            msg.axes.append(0)
-        for i in range(self.buttons_num):
-            msg.buttons.append(0)
     
     def update_joy(self):
         global msg;
