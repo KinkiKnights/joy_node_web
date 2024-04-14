@@ -122,9 +122,9 @@ async def websocket_endpoint(websocket: WebSocket):
 
         for i in range(len(gamepad_info["buttons"])):
             if (len(msg.buttons) <= i):
-                msg.buttons.append(gamepad_info["buttons"][i])
+                msg.buttons.append(int(gamepad_info["buttons"][i]))
             else:
-                msg.buttons[i] = gamepad_info["buttons"][i]
+                msg.buttons[i] = int(gamepad_info["buttons"][i])
         
 def web_start():
     print("boot webserver thread")
