@@ -55,9 +55,11 @@ function updateGamepad(){
     if (!status.node_connect)
         return;
     status.ws.send(JSON.stringify(pad_info));
+    console.log(JSON.stringify(pad_info))
 }
 
 window.addEventListener("gamepadconnected", (e)=>{
+    if (status.pad_connect)return;
     console.log("Connect new GamePad", e.gamepad.id);
     pad_info.id = e.gamepad.id;
     status.pad_index = e.gamepad.index;
