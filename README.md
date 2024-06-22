@@ -15,4 +15,5 @@ pip3 install "uvicorn[standard]"
 ```
 ros2 run joy_node_web joy_node
 ```
-ノードの起動後、[http://127.0.0.1:8700/joy](http://127.0.0.1:8700/joy)へアクセスするとコントローラの情報が`/joy`でPublishされます
+ノードの起動後、[http://ドメイン or IP:8700/joy](http://127.0.0.1:8700/joy)へアクセスするとコントローラの情報が`/joy`でPublishされます
+コントローラのWebクライアントはCROSに違反しない範囲で自由に作成できます。
