@@ -14,7 +14,94 @@ msg = Joy()
 msg2 = Joy()
 @app.get("/joy")
 async def get():
-    return HTMLResponse('<!DOCTYPE html><html lang="JP"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>JoyNodeWebClient</title><style>body{background-color: #353333;color: #eee;font-weight: bold;font-size: 18px;}</style></head><body></body><script>const uri_obj = new URL(window.location.href);const domain = uri_obj.hostconst pad_info = {id:"unknown",buttons:[],axes:[],};const status = {pad_index :0,pad_connect: false,node_connect: false,};function updateGamepad(){if (!status.pad_connect)return;const gp = navigator.getGamepads()[status.pad_index];pad_info.axes = gp.axes;pad_info.buttons = [];for(let i = 0; i < gp.buttons.length;i++){pad_info.buttons.push(gp.buttons[i].value);}if (!status.node_connect)return;status.ws.send(JSON.stringify(pad_info));console.log(JSON.stringify(pad_info))}window.addEventListener("gamepadconnected", (e)=>{if (status.pad_connect)return;console.log("Connect new GamePad", e.gamepad.id);pad_info.id = e.gamepad.id;status.pad_index = e.gamepad.index;status.pad_connect = true;document.body.innerHTML += "Connect Gamepad "+ pad_info.id +"<br>";});window.addEventListener("gamepaddisconnected", (e)=>{if (e.gamepad == status.pad)status.pad_connect = false;document.body.innerHTML += "Disconnect Gamepad "+ pad_info.id +"<br>";});function webSocketInit(){const ws = new WebSocket("ws://"+domain+"/joys");ws.onopen = ()=>{status.node_connect = true;status.ws = ws;document.body.innerHTML += "Open ws://"+domain+"/joy<br>";};ws.onclose = ()=>{status.node_connect = false;document.body.innerHTML += "Close ws://"+domain+"/joy<br>";status.trying = false;}ws.onerror = (err) =>{console.log("Websocket error!! ", err);document.body.innerHTML += "Error ws://"+domain+"/joy<br>";}status.trying = true;}function retryWebsocket(){if (status.node_connect || status.trying)return;webSocketInit();document.body.innerHTML += "Retrying ws://"+domain+"/joy<br>";}setInterval(updateGamepad,50);setInterval(retryWebsocket,5000);webSocketInit();</script></html>')
+    return HTMLResponse("""
+    <!DOCTYPE html>
+<html lang="JP">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>JoyNodeWebClient</title>
+	<style>
+	body{background-color: #353333;color: #eee;font-weight: bold;font-size: 18px;}
+	</style>
+</head>
+
+<body>
+</body>
+<script>
+const uri_obj = new URL(window.location.href);
+const domain = uri_obj.host;const pad_info = {
+	id: "unknown",
+	buttons: [],
+	axes: [],
+};
+const status = {
+	pad_index: 0,
+	pad_connect: false,
+	node_connect: false,
+};
+
+function updateGamepad() {
+	if (!status.pad_connect) return;
+	const gp = navigator.getGamepads()[status.pad_index];
+	pad_info.axes = gp.axes;
+	pad_info.buttons = [];
+	for (let i = 0; i < gp.buttons.length; i++) {
+		pad_info.buttons.push(gp.buttons[i].value);
+	}
+	if (!status.node_connect) return;
+	status.ws.send(JSON.stringify(pad_info));
+	console.log(JSON.stringify(pad_info));
+}
+window.addEventListener("gamepadconnected", (e) => {
+	//if (status.pad_connect) return;
+	console.log("Connect new GamePad", e.gamepad.id);
+	pad_info.id = e.gamepad.id;
+	status.pad_index = e.gamepad.index;
+	status.pad_connect = true;
+	document.body.innerHTML += "Connect Gamepad " + pad_info.id + "<br>";
+});
+window.addEventListener("gamepaddisconnected", (e) => {
+	if (e.gamepad == status.pad) status.pad_connect = false;
+	document.body.innerHTML += "Disconnect Gamepad " + pad_info.id + "<br>";
+});
+
+function webSocketInit() {
+	const ws = new WebSocket("ws://" + domain + "/joys");
+	ws.onopen = () => {
+		status.node_connect = true;
+		status.ws = ws;
+		document.body.innerHTML += "Open ws://" + domain + "/joy<br>";
+	};
+	ws.onclose = () => {
+		status.node_connect = false;
+		document.body.innerHTML += "Close ws://" + domain + "/joy<br>";
+		status.trying = false;
+	}
+	ws.onerror = (err) => {
+		console.log("Websocket error!! ", err);
+		document.body.innerHTML += "Error ws://" + domain + "/joy<br>";
+	}
+	status.trying = true;
+}
+
+function retryWebsocket() {
+	if (status.node_connect || status.trying) return;
+	webSocketInit();
+	document.body.innerHTML += "Retrying ws://" + domain + "/joy<br>";
+}
+setInterval(updateGamepad, 50);
+setInterval(retryWebsocket, 5000);
+webSocketInit();
+
+</script>
+
+</html>
+
+    
+    
+    """)
     
 @app.websocket("/joys")
 async def websocket_endpoint(websocket: WebSocket):
