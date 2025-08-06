@@ -106,39 +106,26 @@ webSocketInit();
 @app.websocket("/joys")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    global msg
+    global msg, msg2
     while True:
         gamepad_info = await websocket.receive_json()
+        # msg_inにmsgまたはmsg2への参照を渡すには、単純に代入すれば参照になります（Pythonのオブジェクトは参照渡し）
+        if "type" in gamepad_info and gamepad_info["type"] == 1:
+            msg_in = msg2
+        else:
+            msg_in = msg
 
         for i in range(len(gamepad_info["axes"])):
-            if (len(msg.axes) <= i):
-                msg.axes.append(gamepad_info["axes"][i])
+            if len(msg_in.axes) <= i:
+                msg_in.axes.append(gamepad_info["axes"][i])
             else:
-                msg.axes[i] = gamepad_info["axes"][i]
+                msg_in.axes[i] = gamepad_info["axes"][i]
 
         for i in range(len(gamepad_info["buttons"])):
-            if (len(msg.buttons) <= i):
-                msg.buttons.append(int(gamepad_info["buttons"][i]))
+            if len(msg_in.buttons) <= i:
+                msg_in.buttons.append(int(gamepad_info["buttons"][i]))
             else:
-                msg.buttons[i] = int(gamepad_info["buttons"][i])
-
-@app.websocket("/joy2")
-async def spacemouse_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    global msg2
-    while True:
-        gamepad_info = await websocket.receive_json()
-        for i in range(len(gamepad_info["axes"])):
-            if (len(msg.axes) <= i):
-                msg2.axes.append(gamepad_info["axes"][i])
-            else:
-                msg2.axes[i] = gamepad_info["axes"][i]
-
-        for i in range(len(gamepad_info["buttons"])):
-            if (len(msg2.buttons) <= i):
-                msg2.buttons.append(int(gamepad_info["buttons"][i]))
-            else:
-                msg2.buttons[i] = int(gamepad_info["buttons"][i])
+                msg_in.buttons[i] = int(gamepad_info["buttons"][i])
         
 def web_start():
     print("boot webserver thread")
@@ -151,13 +138,13 @@ def exchangeMapping(mapping):
 class JoyNodeWeb(Node):
     def __init__(self):
         super().__init__("joy_node_web")
-        qos_profile = QoSProfile(depth=10)
+        qos_profile = QoSProfile(depth=2)
         self.timer = self.create_timer(0.05, self.update_joy)
         self.pub = self.create_publisher(Joy, "/joy", qos_profile=qos_profile)
         self.pub2 = self.create_publisher(Joy, "/joy2", qos_profile=qos_profile)
     
     def update_joy(self):
-        global msg;
+        global msg, msg2;
         msg.header.stamp = self.get_clock().now().to_msg()
         self.pub.publish(msg)
         self.pub2.publish(msg2)
