@@ -6,9 +6,14 @@ ROS2 Humbleでのみ動作確認を行っています。
 # 依存関係のインストール
 ```bash
 sudo apt install python3-pip
-pip3 install fastapi
-pip3 install websockets
-pip3 install "uvicorn[standard]"
+pip install fastapi websockets "uvicorn[standard]"
+```
+
+pip installでエラーが出る場合はpyenv等仮想環境を使用してください。
+```
+python3 -m venv ~/venv/joy-node-web
+source ~/venv/joy-node-web/bin/activate
+pip install fastapi websockets "uvicorn[standard]"
 ```
 
 # 起動
