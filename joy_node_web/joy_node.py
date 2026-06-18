@@ -70,6 +70,14 @@ const STD_BUTTONS = [
 ];
 const STD_AXES = ['stick_l_x','stick_l_y','stick_r_x','stick_r_y'];
 
+// button groups (index into STD_BUTTONS): ABXY / LBRBLTRT / SELECT…HOME / dpad
+const BTN_GROUPS = [
+  [0,1,2,3],
+  [4,5,6,7],
+  [8,9,10,11,16],
+  [12,13,14,15],
+];
+
 // friendly short labels for display
 const BTN_LABEL = {
   face_down:'▼ A', face_right:'▶ B', face_left:'◀ X', face_up:'▲ Y',
@@ -256,9 +264,18 @@ function rebuildDisplay(axes, buttons) {
   }).join('');
 
   const bg = document.getElementById('btns-grid');
-  bg.innerHTML = buttons.map(function(_,i){
-    return '<div class="bb" id="bb'+i+'">'+btnLabel(i)+'</div>';
-  }).join('');
+  if (keymap && buttons.length > 12) {
+    const BR = '<div style="flex-basis:100%;height:6px"></div>';
+    bg.innerHTML = BTN_GROUPS.map(function(group){
+      return group.filter(function(i){ return i < buttons.length; })
+                  .map(function(i){ return '<div class="bb" id="bb'+i+'">'+btnLabel(i)+'</div>'; })
+                  .join('');
+    }).join(BR);
+  } else {
+    bg.innerHTML = buttons.map(function(_,i){
+      return '<div class="bb" id="bb'+i+'">'+btnLabel(i)+'</div>';
+    }).join('');
+  }
 }
 
 function updateDisplay(axes, buttons, fromCan) {
