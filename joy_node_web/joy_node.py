@@ -19,25 +19,26 @@ HTML = r"""<!DOCTYPE html>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JoyNodeWebClient</title>
   <style>
-    body { background-color: #353333; color: #eee; font-weight: bold; font-size: 18px; padding: 8px; }
-    input[type=text] { background: #222; color: #eee; border: 1px solid #666; padding: 3px 6px; font-size: 16px; }
-    button, .btn-file { background: #555; color: #eee; border: 1px solid #888; padding: 3px 10px; cursor: pointer; font-size: 16px; font-weight: bold; }
+    body { background-color: #353333; color: #eee; font-weight: bold; font-size: 18px; padding: 24px; }
+    input[type=text] { background: #222; color: #eee; border: 1px solid #666; padding: 6px 10px; font-size: 16px; margin-right: 8px; }
+    button, .btn-file { background: #555; color: #eee; border: 1px solid #888; padding: 6px 16px; cursor: pointer; font-size: 16px; font-weight: bold; margin-right: 8px; }
     button:hover, .btn-file:hover { background: #777; }
-    .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #888; vertical-align: middle; margin-right: 4px; }
+    .dot { display: inline-block; width: 14px; height: 14px; border-radius: 50%; background: #888; vertical-align: middle; margin-right: 8px; }
     .dot.connected { background: #4f4; }
     .dot.connecting { background: #fa0; }
     .dot.error { background: #f44; }
-    .log { background: #222; border: 1px solid #555; padding: 4px; height: 100px; overflow-y: auto; font-size: 13px; font-weight: normal; margin-top: 6px; }
-    .km-info { font-size: 15px; }
+    .log { background: #222; border: 1px solid #555; padding: 8px; height: 120px; overflow-y: auto; font-size: 13px; font-weight: normal; margin-top: 12px; line-height: 1.6; }
+    .km-info { font-size: 15px; margin-left: 4px; }
     .km-info.none { color: #888; font-weight: normal; }
-    .section { margin-bottom: 12px; }
-    .axes-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
-    .axis-item { font-size: 16px; min-width: 140px; }
-    .axis-bar { height: 6px; background: #555; margin-top: 2px; }
+    .section { margin-bottom: 28px; }
+    .axes-grid { display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 20px; }
+    .axis-item { font-size: 16px; min-width: 160px; }
+    .axis-bar { height: 6px; background: #555; margin-top: 4px; }
     .axis-fill { height: 100%; background: #aef; width: 50%; }
-    .btns-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
-    .bb { min-width: 36px; padding: 4px 6px; background: #444; border: 1px solid #666; text-align: center; font-size: 14px; color: #aaa; }
+    .btns-wrap { display: flex; flex-wrap: wrap; gap: 10px; }
+    .bb { min-width: 44px; padding: 6px 8px; background: #444; border: 1px solid #666; text-align: center; font-size: 14px; color: #aaa; }
     .bb.pressed { background: #eee; color: #333; border-color: #eee; }
+    #gp-name { margin-bottom: 16px; }
   </style>
 </head>
 <body>
