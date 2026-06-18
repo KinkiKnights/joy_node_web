@@ -19,126 +19,46 @@ HTML = r"""<!DOCTYPE html>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JoyNodeWebClient</title>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #1e1e1e; color: #ccc; font-family: monospace; font-size: 14px; padding: 16px; }
-    h1 { color: #58a6ff; font-size: 1.1em; margin-bottom: 12px; }
-
-    /* panels */
-    .panel {
-      background: #2a2a2a; border: 1px solid #444;
-      border-radius: 6px; padding: 12px; margin-bottom: 10px;
-    }
-    .panel-title { color: #484f58; font-size: 0.72em; letter-spacing: 0.1em; margin-bottom: 8px; }
-
-    /* rows */
-    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    .row label { color: #888; font-size: 0.85em; white-space: nowrap; }
-    .row input[type=text] {
-      flex: 1; min-width: 200px;
-      background: #111; border: 1px solid #444; border-radius: 4px;
-      color: #ccc; font-family: monospace; font-size: 0.85em; padding: 5px 8px;
-    }
-    .row input[type=text]:focus { outline: none; border-color: #58a6ff; }
-
-    /* buttons */
-    button, .btn-file {
-      padding: 5px 12px; border-radius: 4px; border: 1px solid;
-      cursor: pointer; font-family: monospace; font-size: 0.82em;
-      background: transparent; white-space: nowrap;
-    }
-    .btn-connect    { color: #3fb950; border-color: #3fb950; }
-    .btn-disconnect { color: #f85149; border-color: #f85149; }
-    .btn-file       { color: #8b949e; border-color: #30363d; }
-    .btn-clear      { color: #8b949e; border-color: #30363d; }
-    button:hover:not(:disabled) { opacity: 0.75; }
-
-    /* status dot */
-    .dot {
-      width: 10px; height: 10px; border-radius: 50%;
-      background: #555; flex-shrink: 0; transition: background 0.3s;
-    }
-    .dot.connected  { background: #3fb950; }
-    .dot.connecting { background: #d29922; }
-    .dot.error      { background: #f85149; }
-
-    /* log */
-    .log {
-      background: #111; border: 1px solid #333; border-radius: 4px;
-      padding: 8px; height: 120px; overflow-y: auto;
-      font-size: 0.76em; color: #888; margin-top: 8px;
-    }
-    .log .ts  { color: #484f58; margin-right: 6px; }
-    .log .ok  { color: #3fb950; }
-    .log .err { color: #f85149; }
-    .log .inf { color: #58a6ff; }
-
-    /* keymap info */
-    .km-info {
-      font-size: 0.8em; color: #58a6ff; padding: 2px 0;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-    .km-info.none { color: #484f58; }
-
-    /* gamepad display */
-    .axes-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-      gap: 6px; margin-bottom: 8px;
-    }
-    .axis-item { font-size: 0.78em; }
-    .axis-lbl  { color: #58a6ff; }
-    .axis-val  { color: #c9d1d9; float: right; }
-    .axis-bar  { height: 4px; background: #333; border-radius: 2px; overflow: hidden; margin-top: 3px; }
-    .axis-fill { height: 100%; background: #58a6ff; width: 50%; transition: width 0.05s; }
-
-    .btns-wrap { display: flex; flex-wrap: wrap; gap: 4px; }
-    .bb {
-      min-width: 26px; height: 26px; padding: 0 4px;
-      border-radius: 4px; background: #333; border: 1px solid #444;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 0.68em; color: #555; transition: background 0.05s, color 0.05s;
-      white-space: nowrap;
-    }
-    .bb.pressed { background: #1f4e8a; color: #79c0ff; border-color: #58a6ff; }
-
-    .gp-name { color: #8b949e; font-size: 0.8em; margin-bottom: 6px; }
+    body { background-color: #353333; color: #eee; font-weight: bold; font-size: 18px; padding: 8px; }
+    input[type=text] { background: #222; color: #eee; border: 1px solid #666; padding: 3px 6px; font-size: 16px; }
+    button, .btn-file { background: #555; color: #eee; border: 1px solid #888; padding: 3px 10px; cursor: pointer; font-size: 16px; font-weight: bold; }
+    button:hover, .btn-file:hover { background: #777; }
+    .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #888; vertical-align: middle; margin-right: 4px; }
+    .dot.connected { background: #4f4; }
+    .dot.connecting { background: #fa0; }
+    .dot.error { background: #f44; }
+    .log { background: #222; border: 1px solid #555; padding: 4px; height: 100px; overflow-y: auto; font-size: 13px; font-weight: normal; margin-top: 6px; }
+    .km-info { font-size: 15px; }
+    .km-info.none { color: #888; font-weight: normal; }
+    .section { margin-bottom: 12px; }
+    .axes-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+    .axis-item { font-size: 16px; min-width: 140px; }
+    .axis-bar { height: 6px; background: #555; margin-top: 2px; }
+    .axis-fill { height: 100%; background: #aef; width: 50%; }
+    .btns-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
+    .bb { min-width: 36px; padding: 4px 6px; background: #444; border: 1px solid #666; text-align: center; font-size: 14px; color: #aaa; }
+    .bb.pressed { background: #eee; color: #333; border-color: #eee; }
   </style>
 </head>
 <body>
-  <h1>&#9881; JoyNodeWebClient</h1>
-
-  <!-- WebSocket connection -->
-  <div class="panel">
-    <div class="panel-title">CONNECTION</div>
-    <div class="row">
-      <span class="dot" id="dot"></span>
-      <label>URL:</label>
-      <input type="text" id="ws-url" placeholder="ws://hostname/joys">
-      <button class="btn-connect"    onclick="doConnect()">Connect</button>
-      <button class="btn-disconnect" onclick="doDisconnect()">Disconnect</button>
-    </div>
+  <div class="section">
+    <span class="dot" id="dot"></span>
+    <input type="text" id="ws-url" placeholder="ws://hostname/joys" size="36">
+    <button onclick="doConnect()">Connect</button>
+    <button onclick="doDisconnect()">Disconnect</button>
     <div class="log" id="log"></div>
   </div>
 
-  <!-- Keymap -->
-  <div class="panel">
-    <div class="panel-title">KEYMAP</div>
-    <div class="row">
-      <label class="btn-file">
-        &#128194; Load JSON
-        <input type="file" id="km-file" accept=".json" style="display:none" onchange="loadKeymap(event)">
-      </label>
-      <button class="btn-clear" onclick="clearKeymap()">&#10005; Clear</button>
-      <div class="km-info none" id="km-info">No keymap — raw passthrough</div>
-    </div>
+  <div class="section">
+    Keymap:
+    <label class="btn-file">Load JSON<input type="file" id="km-file" accept=".json" style="display:none" onchange="loadKeymap(event)"></label>
+    <button onclick="clearKeymap()">Clear</button>
+    <span class="km-info none" id="km-info">No keymap (raw passthrough)</span>
   </div>
 
-  <!-- Gamepad state -->
-  <div class="panel">
-    <div class="gp-name" id="gp-name">Gamepad: not connected</div>
-    <div class="axes-grid"  id="axes-grid"></div>
-    <div class="btns-wrap"  id="btns-grid"></div>
-  </div>
+  <div id="gp-name">Gamepad: not connected</div>
+  <div class="axes-grid"  id="axes-grid"></div>
+  <div class="btns-wrap"  id="btns-grid"></div>
 
 <script>
 // ── Standard gamepad layout (W3C) ────────────────────────────────────────
