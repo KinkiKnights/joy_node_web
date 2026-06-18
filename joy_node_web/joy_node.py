@@ -50,10 +50,9 @@ HTML = r"""<!DOCTYPE html>
   </div>
 
   <div class="section">
-    Keymap:
-    <label class="btn-file">Load JSON<input type="file" id="km-file" accept=".json" style="display:none" onchange="loadKeymap(event)"></label>
-    <button onclick="clearKeymap()">Clear</button>
-    <span class="km-info none" id="km-info">No keymap (raw passthrough)</span>
+    <label class="btn-file">ファイルからキーマップを読み込み<input type="file" id="km-file" accept=".json" style="display:none" onchange="loadKeymap(event)"></label>
+    <button onclick="clearKeymap()">キーマップクリア</button>
+    <span class="km-info none" id="km-info">キーマップなし (生データ)</span>
   </div>
 
   <div id="gp-name">Gamepad: not connected</div>
@@ -131,6 +130,13 @@ function retryWebsocket() {
 }
 
 // ── Keymap ────────────────────────────────────────────────────────────────
+function applyKeymapData(data) {
+  keymap = data.mapping;
+  const infoEl = document.getElementById('km-info');
+  infoEl.textContent = (data.gamepadId || 'Unknown') + (data.version ? '  v'+data.version : '');
+  infoEl.className = 'km-info';
+}
+
 function loadKeymap(event) {
   const file = event.target.files[0];
   if (!file) return;
@@ -139,13 +145,11 @@ function loadKeymap(event) {
     try {
       const data = JSON.parse(e.target.result);
       if (!data.mapping) throw new Error('mapping field missing');
-      keymap = data.mapping;
-      const infoEl = document.getElementById('km-info');
-      infoEl.textContent = (data.gamepadId || 'Unknown') + (data.version ? '  v'+data.version : '');
-      infoEl.className = 'km-info';
-      log('Keymap loaded: ' + (data.gamepadId || 'Unknown'), 'ok');
+      applyKeymapData(data);
+      localStorage.setItem('joy_keymap', e.target.result);
+      log('キーマップ読み込み: ' + (data.gamepadId || 'Unknown'), 'ok');
     } catch(err) {
-      log('Keymap load failed: ' + err.message, 'err');
+      log('キーマップ読み込み失敗: ' + err.message, 'err');
     }
     event.target.value = '';
   };
@@ -154,11 +158,12 @@ function loadKeymap(event) {
 
 function clearKeymap() {
   keymap = null;
+  localStorage.removeItem('joy_keymap');
   const el = document.getElementById('km-info');
-  el.textContent = 'No keymap — raw passthrough';
+  el.textContent = 'キーマップなし (生データ)';
   el.className = 'km-info none';
-  log('Keymap cleared', 'inf');
-  rebuildDisplay([], []);   // reset display
+  log('キーマップクリア', 'inf');
+  rebuildDisplay([], []);
 }
 
 // ── Mapping logic ─────────────────────────────────────────────────────────
@@ -269,6 +274,20 @@ function updateDisplay(axes, buttons, fromCan) {
     if(el) el.className='bb'+(v?' pressed':'');
   });
 }
+
+// ── localStorage 復元 ─────────────────────────────────────────────────────
+(function() {
+  const saved = localStorage.getItem('joy_keymap');
+  if (saved) {
+    try {
+      const data = JSON.parse(saved);
+      if (data.mapping) {
+        applyKeymapData(data);
+        log('キーマップ復元: ' + (data.gamepadId || 'Unknown'), 'ok');
+      }
+    } catch(_) { localStorage.removeItem('joy_keymap'); }
+  }
+})();
 
 setInterval(updateGamepad,   50);
 setInterval(retryWebsocket, 5000);
