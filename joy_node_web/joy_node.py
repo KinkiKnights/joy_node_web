@@ -2,15 +2,25 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile
 from sensor_msgs.msg import Joy
+from std_msgs.msg import Bool, Empty
+from geometry_msgs.msg import PoseStamped
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import HTMLResponse
 import uvicorn
 import threading
+import math
 
 
 app = FastAPI()
 msg = Joy()
 msg2 = Joy()
+
+# ── Command state (shared with the ROS node thread) ────────────────────────
+# These globals are written from the WebSocket (uvicorn) thread and read /
+# published from the ROS timer thread, mirroring how msg / msg2 are handled.
+emergency_stop = False   # continuously published on /emergency_stop
+pending_goal = None      # PoseStamped published once on /goal_pose
+pending_cancel = False   # published once on /cancel_goal
 
 HTML = r"""<!DOCTYPE html>
 <html lang="ja">
@@ -54,6 +64,17 @@ HTML = r"""<!DOCTYPE html>
     <label class="btn-file">ファイルからキーマップを読み込み<input type="file" id="km-file" accept=".json" style="display:none" onchange="loadKeymap(event)"></label>
     <button onclick="clearKeymap()">キーマップクリア</button>
     <span class="km-info none" id="km-info">キーマップなし (生データ)</span>
+  </div>
+
+  <div class="section" id="cmd-section">
+    <button onclick="sendEmergencyStop()" style="background:#a33;border-color:#c66;">■ 非常停止</button>
+    <button onclick="sendEmergencyRelease()" style="background:#363;border-color:#6a6;">解除</button>
+    <span style="margin:0 10px;color:#888;">|</span>
+    X:<input type="text" id="goal-x" size="4" value="0">
+    Y:<input type="text" id="goal-y" size="4" value="0">
+    Yaw:<input type="text" id="goal-yaw" size="4" value="0">
+    <button onclick="sendGoal()">ゴール送信</button>
+    <button onclick="sendCancel()">キャンセル</button>
   </div>
 
   <div id="gp-name">Gamepad: not connected</div>
@@ -307,6 +328,24 @@ function updateDisplay(axes, buttons, fromCan) {
   }
 })();
 
+// ── Commands (sent over the SAME WebSocket as joy data) ────────────────────
+function sendCommand(obj) {
+  if (!(status.ws && status.ws.readyState === WebSocket.OPEN)) {
+    log('WS未接続: コマンド送信不可', 'err'); return;
+  }
+  status.ws.send(JSON.stringify(obj));
+  log('CMD送信: ' + JSON.stringify(obj), 'inf');
+}
+function sendEmergencyStop()    { sendCommand({ command: 'emergency_stop' }); }
+function sendEmergencyRelease() { sendCommand({ command: 'emergency_release' }); }
+function sendCancel()           { sendCommand({ command: 'cancel_goal' }); }
+function sendGoal() {
+  const x   = parseFloat(document.getElementById('goal-x').value)   || 0;
+  const y   = parseFloat(document.getElementById('goal-y').value)   || 0;
+  const yaw = parseFloat(document.getElementById('goal-yaw').value) || 0;
+  sendCommand({ command: 'set_goal', x: x, y: y, yaw: yaw, frame_id: 'map' });
+}
+
 setInterval(updateGamepad,   50);
 setInterval(retryWebsocket, 5000);
 wsInit(defaultUrl);
@@ -320,12 +359,48 @@ async def get():
     return HTMLResponse(HTML)
 
 
+def handle_command(data):
+    """Handle a control command received over the WebSocket.
+
+    Command messages are distinguished from joy data by the ``command``
+    key, so existing joy clients (which never send it) are unaffected.
+    The actual publishing happens in the ROS timer thread; here we only
+    update shared state.
+    """
+    global emergency_stop, pending_goal, pending_cancel
+    command = data.get("command")
+
+    if command == "emergency_stop":
+        emergency_stop = True
+    elif command == "emergency_release":
+        emergency_stop = False
+    elif command == "cancel_goal":
+        pending_cancel = True
+    elif command == "set_goal":
+        pose = PoseStamped()
+        pose.header.frame_id = data.get("frame_id", "map")
+        pose.pose.position.x = float(data.get("x", 0.0))
+        pose.pose.position.y = float(data.get("y", 0.0))
+        pose.pose.position.z = 0.0
+        yaw = float(data.get("yaw", 0.0))
+        pose.pose.orientation.z = math.sin(yaw / 2.0)
+        pose.pose.orientation.w = math.cos(yaw / 2.0)
+        pending_goal = pose
+
+
 @app.websocket("/joys")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     global msg, msg2
     while True:
         gamepad_info = await websocket.receive_json()
+
+        # Control command (non joy). Backward compatible: existing joy
+        # clients send {id, axes, buttons} without a "command" field.
+        if isinstance(gamepad_info, dict) and "command" in gamepad_info:
+            handle_command(gamepad_info)
+            continue
+
         if "type" in gamepad_info and gamepad_info["type"] == 1:
             msg_in = msg2
         else:
@@ -361,12 +436,37 @@ class JoyNodeWeb(Node):
         self.timer = self.create_timer(0.05, self.update_joy)
         self.pub  = self.create_publisher(Joy, "/joy",  qos_profile=qos_profile)
         self.pub2 = self.create_publisher(Joy, "/joy2", qos_profile=qos_profile)
+        # Command topics (see docs/COMMUNICATION_SPEC.md)
+        self.pub_estop = self.create_publisher(
+            Bool, "/emergency_stop", qos_profile=qos_profile)
+        self.pub_goal = self.create_publisher(
+            PoseStamped, "/goal_pose", qos_profile=qos_profile)
+        self.pub_cancel = self.create_publisher(
+            Empty, "/cancel_goal", qos_profile=qos_profile)
 
     def update_joy(self):
-        global msg, msg2
-        msg.header.stamp = self.get_clock().now().to_msg()
+        global msg, msg2, emergency_stop, pending_goal, pending_cancel
+        stamp = self.get_clock().now().to_msg()
+        msg.header.stamp = stamp
         self.pub.publish(msg)
         self.pub2.publish(msg2)
+
+        # Emergency stop is broadcast every cycle so any subscriber always
+        # knows the current state (fail-safe for late/dropped messages).
+        estop_msg = Bool()
+        estop_msg.data = emergency_stop
+        self.pub_estop.publish(estop_msg)
+
+        # Goal and cancel are edge-triggered: published once per request.
+        if pending_goal is not None:
+            goal = pending_goal
+            pending_goal = None
+            goal.header.stamp = stamp
+            self.pub_goal.publish(goal)
+
+        if pending_cancel:
+            pending_cancel = False
+            self.pub_cancel.publish(Empty())
 
 
 def main(args=None):
