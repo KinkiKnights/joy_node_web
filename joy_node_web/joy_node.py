@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse
 import uvicorn
 import threading
 import math
+import time
 
 
 app = FastAPI()
@@ -21,6 +22,14 @@ msg2 = Joy()
 emergency_stop = False   # continuously published on /emergency_stop
 pending_goal = None      # PoseStamped published once on /goal_pose
 pending_cancel = False   # published once on /cancel_goal
+
+# Watchdog: monotonic timestamp of the last joy payload received over the
+# WebSocket. When stale (no fresh input within JOY_INPUT_TIMEOUT) the ROS
+# timer publishes a neutralized (zeroed) Joy instead of the last held
+# values, so a dropped/stalled WebSocket can never leave stale non-zero
+# input being published on /joy (fail-safe against runaway drive).
+last_joy_rx = 0.0
+JOY_INPUT_TIMEOUT = 0.5  # seconds
 
 HTML = r"""<!DOCTYPE html>
 <html lang="ja">
@@ -391,7 +400,7 @@ def handle_command(data):
 @app.websocket("/joys")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    global msg, msg2
+    global msg, msg2, last_joy_rx
     while True:
         gamepad_info = await websocket.receive_json()
 
@@ -418,6 +427,9 @@ async def websocket_endpoint(websocket: WebSocket):
             else:
                 msg_in.buttons[i] = int(gamepad_info["buttons"][i])
 
+        # Fresh joy input arrived: pet the watchdog (see update_joy).
+        last_joy_rx = time.monotonic()
+
 
 def web_start():
     print("boot webserver thread")
@@ -433,7 +445,7 @@ class JoyNodeWeb(Node):
     def __init__(self):
         super().__init__("joy_node_web")
         qos_profile = QoSProfile(depth=2)
-        self.timer = self.create_timer(0.05, self.update_joy)
+        self.timer = self.create_timer(0.01, self.update_joy)  # 100 Hz low-latency publish
         self.pub  = self.create_publisher(Joy, "/joy",  qos_profile=qos_profile)
         self.pub2 = self.create_publisher(Joy, "/joy2", qos_profile=qos_profile)
         # Command topics (see docs/COMMUNICATION_SPEC.md)
@@ -447,6 +459,22 @@ class JoyNodeWeb(Node):
     def update_joy(self):
         global msg, msg2, emergency_stop, pending_goal, pending_cancel
         stamp = self.get_clock().now().to_msg()
+
+        # Fail-safe: if no fresh joy input has arrived over the WebSocket
+        # within JOY_INPUT_TIMEOUT (disconnect / stall / browser closed),
+        # neutralize the held command so stale non-zero input is never
+        # published. /joy keeps publishing at the timer rate (neutral) so
+        # downstream stays fed and is driven to a stop rather than runaway.
+        if (time.monotonic() - last_joy_rx) > JOY_INPUT_TIMEOUT:
+            for i in range(len(msg.axes)):
+                msg.axes[i] = 0.0
+            for i in range(len(msg.buttons)):
+                msg.buttons[i] = 0
+            for i in range(len(msg2.axes)):
+                msg2.axes[i] = 0.0
+            for i in range(len(msg2.buttons)):
+                msg2.buttons[i] = 0
+
         msg.header.stamp = stamp
         self.pub.publish(msg)
         self.pub2.publish(msg2)
