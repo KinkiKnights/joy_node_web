@@ -23,7 +23,6 @@
     }
     .app-title { font-size: 22px; letter-spacing: 0.04em; margin: 0; }
     .conn-info { margin-left: auto; text-align: right; line-height: 1.35; }
-    .conn-line { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
     .conn-state { font-size: 14px; color: var(--muted); }
     .conn-target { font-size: 15px; font-family: monospace; font-weight: normal;
                    color: var(--accent); word-break: break-all; }
@@ -33,8 +32,24 @@
     .section h2 { font-size: 16px; color: var(--muted); font-weight: bold;
                   margin: 0 0 10px; letter-spacing: 0.04em; }
 
-    input[type=text] { background: #222; color: var(--fg); border: 1px solid #666;
-                       padding: 6px 10px; font-size: 16px; margin-right: 8px; }
+    input[type=text], select { background: #222; color: var(--fg); border: 1px solid #666;
+                              padding: 6px 10px; font-size: 16px; }
+    input[type=text]:disabled { background: #1c1c1c; color: var(--muted); }
+    select { font-weight: bold; max-width: 100%; }
+
+    /* ── Card ─────────────────────────────────────────────────────────── */
+    .card { background: var(--panel); border: 1px solid #4a4a4a; border-radius: 6px;
+            padding: 16px 18px; }
+    .card > h2 { margin: 0 0 12px; }
+    .card-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .card-row input[type=text] { flex: 1 1 260px; min-width: 200px; }
+    .log-row { display: flex; align-items: center; gap: 10px; margin-top: 14px;
+               background: #222; border: 1px solid var(--line); padding: 8px 10px; }
+    .log-line { font-size: 13px; font-weight: normal; font-family: monospace;
+                color: var(--fg); white-space: nowrap; overflow: hidden;
+                text-overflow: ellipsis; }
+    .log-line.ok { color: var(--ok); }
+    .log-line.err { color: var(--err); }
     button { background: #555; color: var(--fg); border: 1px solid #888;
              padding: 6px 16px; cursor: pointer; font-size: 16px;
              font-weight: bold; margin-right: 8px; }
@@ -44,11 +59,6 @@
     .dot.connected { background: var(--ok); }
     .dot.connecting { background: var(--warn); }
     .dot.error { background: var(--err); }
-    .log { background: #222; border: 1px solid var(--line); padding: 8px;
-           height: 110px; overflow-y: auto; font-size: 13px; font-weight: normal;
-           margin-top: 12px; line-height: 1.6; }
-    .log .ts { color: var(--muted); margin-right: 8px; }
-    .log .ok { color: var(--ok); } .log .err { color: var(--err); }
 
     /* ── Key mapping ──────────────────────────────────────────────────── */
     .km-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 0; }
@@ -102,28 +112,32 @@
     .bb { min-width: 44px; padding: 6px 8px; background: #444; border: 1px solid #666;
           text-align: center; font-size: 14px; color: #aaa; }
     .bb.pressed { background: #eee; color: #333; border-color: #eee; }
-    #gp-name { margin-bottom: 16px; }
+    .pad-row { display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+               flex-wrap: wrap; }
+    .pad-row label { font-size: 15px; color: var(--muted); }
   </style>
 </head>
 <body>
   <header class="app-header">
     <h1 class="app-title">JoyNodeWeb</h1>
     <div class="conn-info">
-      <div class="conn-line">
-        <span class="dot" id="dot"></span>
-        <span class="conn-state" id="conn-state">未接続</span>
-      </div>
+      <div class="conn-state" id="conn-state">未接続</div>
       <div class="conn-target" id="conn-target">-</div>
     </div>
   </header>
 
 <main>
-  <div class="section">
+  <div class="section card">
     <h2>1. 接続</h2>
-    <input type="text" id="ws-url" placeholder="ws://hostname/joys" size="36">
-    <button onclick="doConnect()">Connect</button>
-    <button onclick="doDisconnect()">Disconnect</button>
-    <div class="log" id="log"></div>
+    <div class="card-row">
+      <input type="text" id="ws-url" placeholder="ws://hostname/joys">
+      <button id="btn-connect" onclick="doConnect()">接続</button>
+      <button id="btn-disconnect" onclick="doDisconnect()" hidden>切断</button>
+    </div>
+    <div class="log-row">
+      <span class="dot" id="dot"></span>
+      <span class="log-line" id="log-line">-</span>
+    </div>
   </div>
 
   <div class="section">
@@ -140,7 +154,10 @@
 
   <div class="section">
     <h2>3. 送信中の値</h2>
-    <div id="gp-name">Gamepad: not connected</div>
+    <div class="pad-row">
+      <label for="pad-select">コントローラ</label>
+      <select id="pad-select" onchange="onPadSelect(this.value)"></select>
+    </div>
     <div class="axes-grid"  id="axes-grid"></div>
     <div class="btns-wrap"  id="btns-grid"></div>
   </div>
@@ -153,10 +170,9 @@
       <button onclick="closeKeymapModal()">閉じる</button>
     </div>
     <div class="km-toolbar">
-      <button onclick="startSequence()">順に割り当て</button>
-      <button onclick="applyStandard()">標準割り当て</button>
-      <button onclick="clearAllSlots()">全スロットクリア</button>
-      <button onclick="saveKeymap()">JSONで保存</button>
+      <button onclick="startSequence()">割当開始</button>
+      <button onclick="clearAllSlots()">クリア</button>
+      <button onclick="saveKeymap()">エクスポート</button>
     </div>
     <div class="bind-banner" id="bind-banner" hidden>
       <span><b id="bind-slot-label"></b><span class="bind-progress" id="bind-progress"></span></span>
@@ -247,10 +263,14 @@ const PRESS_THRESHOLD = 0.3;   // press / axis movement detected above this
 const AXIS_DIR_THRESHOLD = 0.5;  // threshold stored for a new axis_dir binding
 const TRIGGER_DELTA = 0.4;     // axis travel that identifies a trigger axis
 
-const KEYMAP_STORAGE = 'joy_keymap';
+// Keymaps are stored per gamepad name: { "<gamepad id>": <file object> }.
+// A pad whose name is already in the store gets its keymap applied on connect.
+const KEYMAP_STORAGE = 'joy_keymaps';
+const KEYMAP_STORAGE_LEGACY = 'joy_keymap';   // pre-per-pad single entry
 
 // ── State ─────────────────────────────────────────────────────────────────
-const status   = { pad_index:0, pad_connect:false, ws:null, trying:false };
+const status   = { pad_index:-1, pad_connect:false, ws:null, trying:false,
+                   manual_disconnect:false };
 const pad_info = { id:'unknown', buttons:[], axes:[] };
 let   keymap   = null;   // null = raw passthrough, object = slot → binding
 let   keymapId = '';     // gamepadId recorded in the loaded / saved file
@@ -260,12 +280,13 @@ let   seqIndex  = 0;     // position in SLOT_ORDER while seqActive
 let   prevButtons = [], prevAxes = [], bindStartAxes = [];
 
 // ── Logging ───────────────────────────────────────────────────────────────
+// Only the latest line is shown; the lamp next to it carries the connection
+// state. textContent, not innerHTML: messages can carry a gamepad id.
 function log(msg, cls) {
-  const el  = document.getElementById('log');
+  const el  = document.getElementById('log-line');
   const now = new Date().toTimeString().slice(0,8);
-  el.innerHTML += '<div><span class="ts">'+now+'</span>'
-                + '<span class="'+(cls||'')+'">'+msg+'</span></div>';
-  el.scrollTop = el.scrollHeight;
+  el.className = 'log-line' + (cls && cls !== 'inf' ? ' ' + cls : '');
+  el.textContent = now + '  ' + msg;
 }
 function setDot(s){ document.getElementById('dot').className='dot '+s; }
 function setConnState(text){ document.getElementById('conn-state').textContent = text; }
@@ -306,37 +327,51 @@ document.getElementById('ws-url').addEventListener('input', function(){
   setConnTarget(this.value.trim());
 });
 
+// The card shows 接続 while down and 切断 while up, so the two never coexist.
+function setConnUi(state) {
+  setDot(state === 'connected' ? 'connected'
+       : state === 'connecting' ? 'connecting' : 'error');
+  setConnState(state === 'connected' ? '接続済'
+             : state === 'connecting' ? '接続中' : '切断');
+  document.getElementById('btn-connect').hidden = (state === 'connected');
+  document.getElementById('btn-disconnect').hidden = (state !== 'connected');
+  document.getElementById('ws-url').disabled = (state === 'connected');
+}
+
 function doConnect() {
-  if (status.ws && status.ws.readyState === WebSocket.OPEN){ log('Already connected','inf'); return; }
+  if (status.ws && status.ws.readyState === WebSocket.OPEN){ log('接続済み','inf'); return; }
   const url = document.getElementById('ws-url').value.trim();
   if (!url) return;
+  status.manual_disconnect = false;   // re-enable auto retry
   wsInit(url);
 }
 function doDisconnect() {
   if (status.ws){ status.ws.onclose=null; status.ws.close(); status.ws=null; }
-  status.trying=false; setDot('error'); setConnState('切断');
-  log('Disconnected by user','err');
+  status.trying=false;
+  status.manual_disconnect = true;    // stay down until 接続 is pressed
+  setConnUi('closed');
+  log('切断しました','err');
 }
 function wsInit(url) {
   if (status.trying) return;
-  status.trying=true; setDot('connecting'); setConnState('接続中'); setConnTarget(url);
-  log('Connecting '+url+' …','inf');
+  status.trying=true; setConnUi('connecting'); setConnTarget(url);
+  log('接続中 '+url+' …','inf');
   const ws = new WebSocket(url);
-  ws.onopen  = ()=>{ status.ws=ws; status.trying=false; setDot('connected');
-                     setConnState('接続済'); log('Connected: '+url,'ok'); };
-  ws.onclose = ()=>{ status.ws=null; status.trying=false; setDot('error');
-                     setConnState('切断'); log('Closed','err'); };
-  ws.onerror = ()=>{ log('WebSocket error','err'); };
+  ws.onopen  = ()=>{ status.ws=ws; status.trying=false; setConnUi('connected');
+                     log('接続: '+url,'ok'); };
+  ws.onclose = ()=>{ status.ws=null; status.trying=false; setConnUi('closed');
+                     log('切断','err'); };
+  ws.onerror = ()=>{ log('WebSocket エラー','err'); };
   ws.onmessage = (e)=>{
     try{ const d=JSON.parse(e.data); if(d.source==='can') updateDisplay(d.axes,d.buttons,true); }catch(_){}
   };
 }
 function retryWebsocket() {
   if (status.ws && status.ws.readyState===WebSocket.OPEN) return;
-  if (status.trying) return;
+  if (status.trying || status.manual_disconnect) return;
   const url = document.getElementById('ws-url').value.trim();
   if (!url) return;
-  log('Retrying …','inf'); wsInit(url);
+  log('再接続 …','inf'); wsInit(url);
 }
 
 // ── Binding evaluation (identical semantics to g2e) ───────────────────────
@@ -415,16 +450,57 @@ function sanitizeMapping(m) {
 function keymapFileObject() {
   return {
     version: 1,
-    gamepadId: keymapId || (status.pad_connect ? pad_info.id : ''),
+    gamepadId: currentPadKey(),
     mapping: keymap || {},
     exportedAt: new Date().toISOString()
   };
 }
 
-function persistKeymap() {
-  if (!keymap) { localStorage.removeItem(KEYMAP_STORAGE); return; }
-  localStorage.setItem(KEYMAP_STORAGE, JSON.stringify(keymapFileObject()));
+// The pad this keymap belongs to: the connected pad wins, so a file imported
+// while a pad is in hand is adopted for that pad and auto-applies next time.
+function currentPadKey() {
+  if (status.pad_connect && pad_info.id) return pad_info.id;
+  return keymapId || '';
 }
+
+function loadKeymapStore() {
+  try {
+    const o = JSON.parse(localStorage.getItem(KEYMAP_STORAGE) || '{}');
+    return (o && typeof o === 'object') ? o : {};
+  } catch(_) { return {}; }
+}
+function saveKeymapStore(store) {
+  localStorage.setItem(KEYMAP_STORAGE, JSON.stringify(store));
+}
+function storedKeymapFor(padId) {
+  if (!padId) return null;
+  const data = loadKeymapStore()[padId];
+  return (data && typeof data.mapping === 'object' && data.mapping) ? data : null;
+}
+
+function persistKeymap() {
+  const key = currentPadKey();
+  if (!key) return;                 // nothing to key it by: memory only
+  const store = loadKeymapStore();
+  if (!keymap) delete store[key];
+  else store[key] = keymapFileObject();
+  saveKeymapStore(store);
+}
+
+// One-time move of the old single-keymap entry into the per-pad store.
+(function migrateLegacyKeymap(){
+  const raw = localStorage.getItem(KEYMAP_STORAGE_LEGACY);
+  if (!raw) return;
+  try {
+    const data = JSON.parse(raw);
+    if (data && typeof data.mapping === 'object' && data.mapping
+        && typeof data.gamepadId === 'string' && data.gamepadId) {
+      const store = loadKeymapStore();
+      if (!store[data.gamepadId]) { store[data.gamepadId] = data; saveKeymapStore(store); }
+    }
+  } catch(_) { /* discard unreadable legacy entry */ }
+  localStorage.removeItem(KEYMAP_STORAGE_LEGACY);
+})();
 
 function setKeymapInfo() {
   const none = !keymap;
@@ -442,7 +518,9 @@ function setKeymapInfo() {
 
 function applyKeymapData(data) {
   keymap = sanitizeMapping(data.mapping);
-  keymapId = typeof data.gamepadId === 'string' ? data.gamepadId : '';
+  keymapId = (status.pad_connect && pad_info.id)
+    ? pad_info.id                                     // adopt for the pad in hand
+    : (typeof data.gamepadId === 'string' ? data.gamepadId : '');
   cancelBind();
   setKeymapInfo();
   renderSlots();
@@ -489,22 +567,24 @@ function saveKeymap() {
   log('キーマップを保存: ' + a.download, 'ok');
 }
 
-function applyStandard() {
-  keymap = JSON.parse(JSON.stringify(STANDARD_MAPPING));
-  // A fresh standard map belongs to the pad in hand, so stamp its id even if
-  // an imported map for another pad was loaded before.
-  if (status.pad_connect) keymapId = pad_info.id;
-  cancelBind(); persistKeymap(); setKeymapInfo(); renderSlots(); rebuildDisplay([], []);
-  log('標準割り当てを適用', 'ok');
-}
 function clearAllSlots() {
   keymap = {};
+  if (status.pad_connect) keymapId = pad_info.id;
   cancelBind(); persistKeymap(); setKeymapInfo(); renderSlots(); rebuildDisplay([], []);
   log('全スロットをクリア', 'inf');
 }
 function clearKeymap() {
-  keymap = null; keymapId = '';
-  cancelBind(); persistKeymap(); setKeymapInfo(); renderSlots(); rebuildDisplay([], []);
+  // Reset also drops the saved entry for this pad, so it does not come back
+  // by auto-apply the next time the pad is selected.
+  const key = currentPadKey();
+  keymap = null;
+  if (key) {
+    const store = loadKeymapStore();
+    delete store[key];
+    saveKeymapStore(store);
+  }
+  keymapId = '';
+  cancelBind(); setKeymapInfo(); renderSlots(); rebuildDisplay([], []);
   log('リセット: 割り当てを解除 (生データを送信)', 'inf');
 }
 
@@ -730,26 +810,92 @@ function applyMapping(rawAxes, rawButtons) {
   return { axes, buttons };
 }
 
-// ── Gamepad polling ───────────────────────────────────────────────────────
-window.addEventListener('gamepadconnected', (e) => {
-  pad_info.id = e.gamepad.id;
-  status.pad_index = e.gamepad.index;
-  status.pad_connect = true;
-  document.getElementById('gp-name').textContent = 'Gamepad: ' + pad_info.id;
-  log('Gamepad connected: ' + pad_info.id, 'ok');
-});
-window.addEventListener('gamepaddisconnected', (e) => {
-  if (e.gamepad.index === status.pad_index) {
+// ── Controller selection ──────────────────────────────────────────────────
+// Every pad the Gamepad API reports is listed; the selected one is the one
+// published. Its name keys the stored keymap, which is applied on selection.
+let padListSig = null;   // null so the first refresh always renders the list
+
+function connectedPads() {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  return Array.from(pads).filter(function(p){ return p; });
+}
+
+function refreshPadList() {
+  const pads = connectedPads();
+  const sel  = document.getElementById('pad-select');
+  const sig  = pads.map(function(p){ return p.index + ':' + p.id; }).join('|');
+
+  if (sig !== padListSig) {
+    padListSig = sig;
+    sel.textContent = '';
+    if (!pads.length) {
+      const o = document.createElement('option');
+      o.value = ''; o.textContent = '(検出なし)';
+      sel.appendChild(o);
+    } else {
+      pads.forEach(function(p){
+        const o = document.createElement('option');
+        o.value = String(p.index);
+        o.textContent = '[' + p.index + '] ' + p.id;
+        sel.appendChild(o);
+      });
+    }
+    // Keep the current pick if it is still around, otherwise take the first.
+    if (!pads.some(function(p){ return p.index === status.pad_index; })) {
+      selectPad(pads.length ? pads[0].index : -1);
+    }
+    sel.value = status.pad_index >= 0 ? String(status.pad_index) : '';
+  }
+
+  const cur = pads.find(function(p){ return p.index === status.pad_index; }) || null;
+  if (!cur && status.pad_connect) {          // selected pad went away
     status.pad_connect = false;
     pad_info.raw_buttons = []; pad_info.raw_axes = [];
-    document.getElementById('gp-name').textContent = 'Gamepad: disconnected';
-    log('Gamepad disconnected', 'err');
     cancelBind();
     rebuildDisplay([], []);
   }
+  status.pad_connect = !!cur;
+}
+
+// Switching pads switches keymaps: a pad whose name is in the store gets its
+// saved keymap applied, an unknown pad falls back to raw passthrough.
+function selectPad(index) {
+  const changed = (index !== status.pad_index);
+  status.pad_index = index;
+  cancelBind();
+  const pad = connectedPads().find(function(p){ return p.index === index; }) || null;
+  status.pad_connect = !!pad;
+  pad_info.id = pad ? pad.id : 'unknown';
+  if (!changed || !pad) return;
+
+  log('コントローラ選択: ' + pad.id, 'ok');
+  const stored = storedKeymapFor(pad.id);
+  if (stored) {
+    applyKeymapData(stored);
+    log('キーマップ自動適用: ' + pad.id, 'ok');
+  } else if (keymap) {
+    keymap = null; keymapId = '';
+    setKeymapInfo(); renderSlots(); rebuildDisplay([], []);
+    log('保存済みキーマップなし: 生データを送信', 'inf');
+  }
+}
+
+function onPadSelect(value) {
+  selectPad(value === '' ? -1 : parseInt(value, 10));
+}
+
+window.addEventListener('gamepadconnected', function(e){
+  log('コントローラ接続: ' + e.gamepad.id, 'ok');
+  refreshPadList();
+});
+window.addEventListener('gamepaddisconnected', function(e){
+  log('コントローラ切断: ' + e.gamepad.id, 'err');
+  refreshPadList();
 });
 
+// ── Gamepad polling ───────────────────────────────────────────────────────
 function updateGamepad() {
+  refreshPadList();
   if (!status.pad_connect) return;
   const gp = navigator.getGamepads()[status.pad_index];
   if (!gp) return;
@@ -829,22 +975,14 @@ function updateDisplay(axes, buttons, fromCan) {
   });
 }
 
-// ── localStorage 復元 ─────────────────────────────────────────────────────
+// ── Startup ───────────────────────────────────────────────────────────────
+// Keymaps are not restored here: they are applied per pad, once a pad is
+// selected (see selectPad), so the stored name always matches the pad in use.
 (function() {
-  const saved = localStorage.getItem(KEYMAP_STORAGE);
-  if (saved) {
-    try {
-      const data = JSON.parse(saved);
-      if (data && typeof data.mapping === 'object' && data.mapping !== null) {
-        applyKeymapData(data);
-        log('キーマップ復元: ' + (keymapId || 'Unknown'), 'ok');
-      } else {
-        localStorage.removeItem(KEYMAP_STORAGE);
-      }
-    } catch(_) { localStorage.removeItem(KEYMAP_STORAGE); }
-  }
+  setConnUi('closed');
   setKeymapInfo();
   renderSlots();
+  refreshPadList();
 })();
 
 setInterval(updateGamepad,   50);
