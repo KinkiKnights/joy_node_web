@@ -1,15 +1,19 @@
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile
+from rclpy.utilities import remove_ros_args
 from sensor_msgs.msg import Joy
 from std_msgs.msg import Bool, Empty
 from geometry_msgs.msg import PoseStamped
 from fastapi import FastAPI, WebSocket
-from fastapi.responses import HTMLResponse
 import uvicorn
+import argparse
+import sys
 import threading
 import math
 import time
+
+from joy_node_web.client import DEFAULT_NODE_PORT, add_client_routes
 
 
 app = FastAPI()
@@ -30,342 +34,6 @@ pending_cancel = False   # published once on /cancel_goal
 # input being published on /joy (fail-safe against runaway drive).
 last_joy_rx = 0.0
 JOY_INPUT_TIMEOUT = 0.5  # seconds
-
-HTML = r"""<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>JoyNodeWebClient</title>
-  <style>
-    body { background-color: #353333; color: #eee; font-weight: bold; font-size: 18px; padding: 24px; }
-    input[type=text] { background: #222; color: #eee; border: 1px solid #666; padding: 6px 10px; font-size: 16px; margin-right: 8px; }
-    button, .btn-file { background: #555; color: #eee; border: 1px solid #888; padding: 6px 16px; cursor: pointer; font-size: 16px; font-weight: bold; margin-right: 8px; }
-    button:hover, .btn-file:hover { background: #777; }
-    .dot { display: inline-block; width: 14px; height: 14px; border-radius: 50%; background: #888; vertical-align: middle; margin-right: 8px; }
-    .dot.connected { background: #4f4; }
-    .dot.connecting { background: #fa0; }
-    .dot.error { background: #f44; }
-    .log { background: #222; border: 1px solid #555; padding: 8px; height: 120px; overflow-y: auto; font-size: 13px; font-weight: normal; margin-top: 12px; line-height: 1.6; }
-    .km-info { font-size: 15px; margin-left: 4px; }
-    .km-info.none { color: #888; font-weight: normal; }
-    .section { margin-bottom: 28px; }
-    .axes-grid { display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 20px; }
-    .axis-item { font-size: 16px; min-width: 160px; }
-    .axis-bar { height: 6px; background: #555; margin-top: 4px; }
-    .axis-fill { height: 100%; background: #aef; width: 50%; }
-    .btns-wrap { display: flex; flex-wrap: wrap; gap: 10px; }
-    .bb { min-width: 44px; padding: 6px 8px; background: #444; border: 1px solid #666; text-align: center; font-size: 14px; color: #aaa; }
-    .bb.pressed { background: #eee; color: #333; border-color: #eee; }
-    #gp-name { margin-bottom: 16px; }
-  </style>
-</head>
-<body>
-  <div class="section">
-    <span class="dot" id="dot"></span>
-    <input type="text" id="ws-url" placeholder="ws://hostname/joys" size="36">
-    <button onclick="doConnect()">Connect</button>
-    <button onclick="doDisconnect()">Disconnect</button>
-    <div class="log" id="log"></div>
-  </div>
-
-  <div class="section">
-    <label class="btn-file">ファイルからキーマップを読み込み<input type="file" id="km-file" accept=".json" style="display:none" onchange="loadKeymap(event)"></label>
-    <button onclick="clearKeymap()">キーマップクリア</button>
-    <span class="km-info none" id="km-info">キーマップなし (生データ)</span>
-  </div>
-
-  <div class="section" id="cmd-section">
-    <button onclick="sendEmergencyStop()" style="background:#a33;border-color:#c66;">■ 非常停止</button>
-    <button onclick="sendEmergencyRelease()" style="background:#363;border-color:#6a6;">解除</button>
-    <span style="margin:0 10px;color:#888;">|</span>
-    X:<input type="text" id="goal-x" size="4" value="0">
-    Y:<input type="text" id="goal-y" size="4" value="0">
-    Yaw:<input type="text" id="goal-yaw" size="4" value="0">
-    <button onclick="sendGoal()">ゴール送信</button>
-    <button onclick="sendCancel()">キャンセル</button>
-  </div>
-
-  <div id="gp-name">Gamepad: not connected</div>
-  <div class="axes-grid"  id="axes-grid"></div>
-  <div class="btns-wrap"  id="btns-grid"></div>
-
-<script>
-// ── Standard gamepad layout (W3C) ────────────────────────────────────────
-const STD_BUTTONS = [
-  'face_down','face_right','face_left','face_up',
-  'shoulder_l','shoulder_r','trigger_l','trigger_r',
-  'select','start','stick_l_click','stick_r_click',
-  'dpad_up','dpad_down','dpad_left','dpad_right','home'
-];
-const STD_AXES = ['stick_l_x','stick_l_y','stick_r_x','stick_r_y'];
-
-// button groups (index into STD_BUTTONS): ABXY / LBRBLTRT / SELECT…HOME / dpad
-const BTN_GROUPS = [
-  [0,1,2,3],
-  [4,5,6,7],
-  [8,9,10,11,16],
-  [12,13,14,15],
-];
-
-// friendly short labels for display
-const BTN_LABEL = {
-  face_down:'▼ A', face_right:'▶ B', face_left:'◀ X', face_up:'▲ Y',
-  shoulder_l:'LB', shoulder_r:'RB', trigger_l:'LT', trigger_r:'RT',
-  select:'Select', start:'Start', stick_l_click:'LS', stick_r_click:'RS',
-  dpad_up:'↑', dpad_down:'↓', dpad_left:'←', dpad_right:'→', home:'Home'
-};
-const AXIS_LABEL = {
-  stick_l_x:'LX', stick_l_y:'LY', stick_r_x:'RX', stick_r_y:'RY'
-};
-
-// ── State ─────────────────────────────────────────────────────────────────
-const status   = { pad_index:0, pad_connect:false, ws:null, trying:false };
-const pad_info = { id:'unknown', buttons:[], axes:[] };
-let   keymap   = null;   // null = raw passthrough
-
-// ── Logging ───────────────────────────────────────────────────────────────
-function log(msg, cls) {
-  const el  = document.getElementById('log');
-  const now = new Date().toTimeString().slice(0,8);
-  el.innerHTML += '<div><span class="ts">'+now+'</span>'
-                + '<span class="'+(cls||'')+'">'+msg+'</span></div>';
-  el.scrollTop = el.scrollHeight;
-}
-function setDot(s){ document.getElementById('dot').className='dot '+s; }
-
-// ── WebSocket ─────────────────────────────────────────────────────────────
-const uri_obj    = new URL(window.location.href);
-const defaultUrl = 'ws://' + uri_obj.host + '/joys';
-document.getElementById('ws-url').value = defaultUrl;
-
-function doConnect() {
-  if (status.ws && status.ws.readyState === WebSocket.OPEN){ log('Already connected','inf'); return; }
-  const url = document.getElementById('ws-url').value.trim();
-  if (!url) return;
-  wsInit(url);
-}
-function doDisconnect() {
-  if (status.ws){ status.ws.onclose=null; status.ws.close(); status.ws=null; }
-  status.trying=false; setDot('error'); log('Disconnected by user','err');
-}
-function wsInit(url) {
-  if (status.trying) return;
-  status.trying=true; setDot('connecting'); log('Connecting '+url+' …','inf');
-  const ws = new WebSocket(url);
-  ws.onopen  = ()=>{ status.ws=ws; status.trying=false; setDot('connected'); log('Connected: '+url,'ok'); };
-  ws.onclose = ()=>{ status.ws=null; status.trying=false; setDot('error'); log('Closed','err'); };
-  ws.onerror = ()=>{ log('WebSocket error','err'); };
-  ws.onmessage = (e)=>{
-    try{ const d=JSON.parse(e.data); if(d.source==='can') updateDisplay(d.axes,d.buttons,true); }catch(_){}
-  };
-}
-function retryWebsocket() {
-  if (status.ws && status.ws.readyState===WebSocket.OPEN) return;
-  if (status.trying) return;
-  const url = document.getElementById('ws-url').value.trim();
-  if (!url) return;
-  log('Retrying …','inf'); wsInit(url);
-}
-
-// ── Keymap ────────────────────────────────────────────────────────────────
-function applyKeymapData(data) {
-  keymap = data.mapping;
-  const infoEl = document.getElementById('km-info');
-  infoEl.textContent = (data.gamepadId || 'Unknown') + (data.version ? '  v'+data.version : '');
-  infoEl.className = 'km-info';
-}
-
-function loadKeymap(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    try {
-      const data = JSON.parse(e.target.result);
-      if (!data.mapping) throw new Error('mapping field missing');
-      applyKeymapData(data);
-      localStorage.setItem('joy_keymap', e.target.result);
-      log('キーマップ読み込み: ' + (data.gamepadId || 'Unknown'), 'ok');
-    } catch(err) {
-      log('キーマップ読み込み失敗: ' + err.message, 'err');
-    }
-    event.target.value = '';
-  };
-  reader.readAsText(file);
-}
-
-function clearKeymap() {
-  keymap = null;
-  localStorage.removeItem('joy_keymap');
-  const el = document.getElementById('km-info');
-  el.textContent = 'キーマップなし (生データ)';
-  el.className = 'km-info none';
-  log('キーマップクリア', 'inf');
-  rebuildDisplay([], []);
-}
-
-// ── Mapping logic ─────────────────────────────────────────────────────────
-function applyMapping(rawAxes, rawButtons) {
-  if (!keymap) return { axes: Array.from(rawAxes), buttons: rawButtons.map(b=>b) };
-
-  const buttons = STD_BUTTONS.map(name => {
-    const m = keymap[name];
-    if (!m) return 0;
-    if (m.kind === 'button') return rawButtons[m.index] || 0;
-    if (m.kind === 'axis') {
-      const v = rawAxes[m.index] || 0;
-      return (v + 1) / 2;           // axis -1..1 → button 0..1
-    }
-    return 0;
-  });
-
-  const axes = STD_AXES.map(name => {
-    const m = keymap[name];
-    if (!m) return 0;
-    if (m.kind === 'axis')   return rawAxes[m.index] || 0;
-    if (m.kind === 'button') return rawButtons[m.index] ? 1.0 : 0.0;
-    return 0;
-  });
-
-  return { axes, buttons };
-}
-
-// ── Gamepad polling ───────────────────────────────────────────────────────
-window.addEventListener('gamepadconnected', (e) => {
-  pad_info.id = e.gamepad.id;
-  status.pad_index = e.gamepad.index;
-  status.pad_connect = true;
-  document.getElementById('gp-name').textContent = 'Gamepad: ' + pad_info.id;
-  log('Gamepad connected: ' + pad_info.id, 'ok');
-});
-window.addEventListener('gamepaddisconnected', (e) => {
-  if (e.gamepad.index === status.pad_index) {
-    status.pad_connect = false;
-    document.getElementById('gp-name').textContent = 'Gamepad: disconnected';
-    log('Gamepad disconnected', 'err');
-    rebuildDisplay([], []);
-  }
-});
-
-function updateGamepad() {
-  if (!status.pad_connect) return;
-  const gp = navigator.getGamepads()[status.pad_index];
-  if (!gp) return;
-
-  const rawAxes    = Array.from(gp.axes);
-  const rawButtons = gp.buttons.map(b => b.value);
-
-  const { axes, buttons } = applyMapping(rawAxes, rawButtons);
-
-  pad_info.axes    = axes;
-  pad_info.buttons = buttons;
-
-  updateDisplay(axes, buttons, false);
-
-  if (status.ws && status.ws.readyState === WebSocket.OPEN) {
-    status.ws.send(JSON.stringify(pad_info));
-  }
-}
-
-// ── Display ───────────────────────────────────────────────────────────────
-let _axisCount = -1, _btnCount = -1;
-
-function axisLabel(i) {
-  if (keymap && i < STD_AXES.length) return AXIS_LABEL[STD_AXES[i]] || STD_AXES[i];
-  return 'axis[' + i + ']';
-}
-function btnLabel(i) {
-  if (keymap && i < STD_BUTTONS.length) return BTN_LABEL[STD_BUTTONS[i]] || STD_BUTTONS[i];
-  return '' + i;
-}
-
-function rebuildDisplay(axes, buttons) {
-  _axisCount = axes.length;
-  _btnCount  = buttons.length;
-
-  const ag = document.getElementById('axes-grid');
-  ag.innerHTML = axes.map(function(_,i){
-    return '<div class="axis-item">'
-      + '<span class="axis-lbl">'+axisLabel(i)+'</span>'
-      + '<span class="axis-val" id="av'+i+'">0.000</span>'
-      + '<div class="axis-bar"><div class="axis-fill" id="ab'+i+'"></div></div>'
-      + '</div>';
-  }).join('');
-
-  const bg = document.getElementById('btns-grid');
-  if (keymap && buttons.length > 12) {
-    const BR = '<div style="flex-basis:100%;height:6px"></div>';
-    bg.innerHTML = BTN_GROUPS.map(function(group){
-      return group.filter(function(i){ return i < buttons.length; })
-                  .map(function(i){ return '<div class="bb" id="bb'+i+'">'+btnLabel(i)+'</div>'; })
-                  .join('');
-    }).join(BR);
-  } else {
-    bg.innerHTML = buttons.map(function(_,i){
-      return '<div class="bb" id="bb'+i+'">'+btnLabel(i)+'</div>';
-    }).join('');
-  }
-}
-
-function updateDisplay(axes, buttons, fromCan) {
-  if (axes.length !== _axisCount || buttons.length !== _btnCount) {
-    rebuildDisplay(axes, buttons);
-  }
-  axes.forEach(function(v,i){
-    var el=document.getElementById('av'+i), br=document.getElementById('ab'+i);
-    if(el) el.textContent = parseFloat(v).toFixed(3);
-    if(br) br.style.width = ((parseFloat(v)+1)*50)+'%';
-  });
-  buttons.forEach(function(v,i){
-    var el=document.getElementById('bb'+i);
-    if(el) el.className='bb'+(v?' pressed':'');
-  });
-}
-
-// ── localStorage 復元 ─────────────────────────────────────────────────────
-(function() {
-  const saved = localStorage.getItem('joy_keymap');
-  if (saved) {
-    try {
-      const data = JSON.parse(saved);
-      if (data.mapping) {
-        applyKeymapData(data);
-        log('キーマップ復元: ' + (data.gamepadId || 'Unknown'), 'ok');
-      }
-    } catch(_) { localStorage.removeItem('joy_keymap'); }
-  }
-})();
-
-// ── Commands (sent over the SAME WebSocket as joy data) ────────────────────
-function sendCommand(obj) {
-  if (!(status.ws && status.ws.readyState === WebSocket.OPEN)) {
-    log('WS未接続: コマンド送信不可', 'err'); return;
-  }
-  status.ws.send(JSON.stringify(obj));
-  log('CMD送信: ' + JSON.stringify(obj), 'inf');
-}
-function sendEmergencyStop()    { sendCommand({ command: 'emergency_stop' }); }
-function sendEmergencyRelease() { sendCommand({ command: 'emergency_release' }); }
-function sendCancel()           { sendCommand({ command: 'cancel_goal' }); }
-function sendGoal() {
-  const x   = parseFloat(document.getElementById('goal-x').value)   || 0;
-  const y   = parseFloat(document.getElementById('goal-y').value)   || 0;
-  const yaw = parseFloat(document.getElementById('goal-yaw').value) || 0;
-  sendCommand({ command: 'set_goal', x: x, y: y, yaw: yaw, frame_id: 'map' });
-}
-
-setInterval(updateGamepad,   50);
-setInterval(retryWebsocket, 5000);
-wsInit(defaultUrl);
-</script>
-</body>
-</html>"""
-
-
-@app.get("/joy")
-async def get():
-    return HTMLResponse(HTML)
 
 
 def handle_command(data):
@@ -431,9 +99,9 @@ async def websocket_endpoint(websocket: WebSocket):
         last_joy_rx = time.monotonic()
 
 
-def web_start():
+def web_start(host="0.0.0.0", port=DEFAULT_NODE_PORT):
     print("boot webserver thread")
-    uvicorn.run(app, host="0.0.0.0", port=8700)
+    uvicorn.run(app, host=host, port=port)
 
 
 def exchangeMapping(mapping):
@@ -497,12 +165,45 @@ class JoyNodeWeb(Node):
             self.pub_cancel.publish(Empty())
 
 
+def parse_args(argv=None):
+    """Parse the node's own command line options (ROS args already removed)."""
+    parser = argparse.ArgumentParser(
+        prog="joy_node",
+        description="joy_node_web ROS2 node. Serves the browser client as well "
+                    "unless --no-client is given.")
+    parser.add_argument(
+        "--host", default="0.0.0.0",
+        help="address to bind (default: 0.0.0.0)")
+    parser.add_argument(
+        "--port", type=int, default=DEFAULT_NODE_PORT,
+        help="port for the WebSocket endpoint /joys, and for the client page "
+             "when it is served (default: %d)" % DEFAULT_NODE_PORT)
+    parser.add_argument(
+        "--no-client", dest="serve_client", action="store_false",
+        help="run the node only: do not serve the browser client at /joy")
+    return parser.parse_args(argv)
+
+
 def main(args=None):
     rclpy.init(args=args)
-    thread_web = threading.Thread(target=web_start)
+    # The node's own options come from the command line; ROS args
+    # (--ros-args ...) are stripped first so argparse never sees them.
+    cli = parse_args(remove_ros_args(args=sys.argv)[1:])
+
+    # Client delivery is part of the same web server by default, so the
+    # page and the /joys endpoint share one origin and the page needs no
+    # configuration. With --no-client, only /joys is served and the client
+    # is expected to come from elsewhere (see client_server).
+    if cli.serve_client:
+        add_client_routes(app)
+
+    thread_web = threading.Thread(target=web_start, args=(cli.host, cli.port))
     thread_web.start()
     joy_node = JoyNodeWeb()
-    print("please open domain:8700/joy")
+    if cli.serve_client:
+        print("please open domain:%d/joy" % cli.port)
+    else:
+        print("node only (--no-client): websocket endpoint on :%d/joys" % cli.port)
     rclpy.spin(joy_node)
 
 

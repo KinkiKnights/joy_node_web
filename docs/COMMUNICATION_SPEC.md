@@ -3,33 +3,40 @@
 Webブラウザ ⇄ ROS2 ノード間の通信仕様と、ノードが Publish する ROS2 トピックの仕様をまとめる。
 
 - 動作確認: ROS2 **Humble**
-- Web サーバ: FastAPI + uvicorn（`0.0.0.0:8700`）
+- Web サーバ: FastAPI + uvicorn（ノード: `0.0.0.0:8700` / クライアント配信単体: `0.0.0.0:8701`）
 - ノード名: `joy_node_web`
-- Publish 周期: **20 Hz**（50 ms タイマ）
+- Publish 周期: **100 Hz**（10 ms タイマ）
 
 ---
 
 ## 1. 全体構成
 
 ```
+[クライアント配信]  GET /joy          … static/client.html を配信（ROS 非依存）
+        │  ノード同梱（既定・同一ポート） or client_server 単体
+        ▼
 [ブラウザ / 任意の WebSocket クライアント]
         │  ws://<host>:8700/joys
         │  ・ジョイスティックデータ（既存）
-        │  ・コマンド（追加）        ← どちらも同一の WebSocket 接続
+        │  ・コマンド                ← どちらも同一の WebSocket 接続
         ▼
 [FastAPI WebSocket エンドポイント /joys]
         │  受信 JSON を共有状態へ反映
         ▼
-[JoyNodeWeb ノード]  20Hz タイマで Publish
+[JoyNodeWeb ノード]  100Hz タイマで Publish
         ├─ /joy            sensor_msgs/Joy      （既存）
         ├─ /joy2           sensor_msgs/Joy      （既存）
-        ├─ /emergency_stop std_msgs/Bool        （追加・常時配信）
-        ├─ /goal_pose      geometry_msgs/PoseStamped （追加・都度配信）
-        └─ /cancel_goal    std_msgs/Empty       （追加・都度配信）
+        ├─ /emergency_stop std_msgs/Bool        （常時配信）
+        ├─ /goal_pose      geometry_msgs/PoseStamped （都度配信）
+        └─ /cancel_goal    std_msgs/Empty       （都度配信）
 ```
 
-- クライアントは `http://<host>:8700/joy` にアクセスすると、コントローラ入力とコマンド送信 UI を持つ Web クライアントが利用できる。
-- コマンドは **既存と同じ WebSocket 接続（`/joys`）** を使って送信する。新たな接続は不要。
+- クライアント配信（`GET /joy`）とノード（`/joys` + Publish）は分離されており、単体でも起動できる。起動方法は [README](../README.md#起動) を参照。
+  - `ros2 run joy_node_web joy_node` … ノード + 配信（既定）。同一オリジンになるため接続先設定は不要
+  - `ros2 run joy_node_web joy_node --no-client` … ノード単体（`/joy` は 404）
+  - `ros2 run joy_node_web client_server` … 配信単体（`:8701`。ROS2 環境不要）
+- 配信を分離した場合、ページが接続する `/joys` の場所は配信サーバが注入する（`--ws-url` / `--ws-port`）か、`?ws=` で指定する。
+- コマンドは **ジョイスティックデータと同じ WebSocket 接続（`/joys`）** を使って送信する。新たな接続は不要。
 
 ---
 
@@ -106,15 +113,15 @@ Webブラウザ ⇄ ROS2 ノード間の通信仕様と、ノードが Publish �
 
 | トピック | 型 | 配信方式 | QoS | 説明 |
 |---|---|---|---|---|
-| `/joy` | `sensor_msgs/Joy` | 常時 20Hz | depth=2 | コントローラ 1（既存） |
-| `/joy2` | `sensor_msgs/Joy` | 常時 20Hz | depth=2 | コントローラ 2（既存, `type==1`） |
-| `/emergency_stop` | `std_msgs/Bool` | 常時 20Hz | depth=2 | 非常停止状態。`true`=停止中 / `false`=解除中 |
+| `/joy` | `sensor_msgs/Joy` | 常時 100Hz | depth=2 | コントローラ 1（既存） |
+| `/joy2` | `sensor_msgs/Joy` | 常時 100Hz | depth=2 | コントローラ 2（既存, `type==1`） |
+| `/emergency_stop` | `std_msgs/Bool` | 常時 100Hz | depth=2 | 非常停止状態。`true`=停止中 / `false`=解除中 |
 | `/goal_pose` | `geometry_msgs/PoseStamped` | コマンド受信時のみ 1 回 | depth=2 | 自動ゴール座標 |
 | `/cancel_goal` | `std_msgs/Empty` | コマンド受信時のみ 1 回 | depth=2 | ゴールのキャンセル指示 |
 
 ### 3.1 `/emergency_stop`（std_msgs/Bool）
 
-- **常時配信（20Hz）**。フェイルセーフのため、状態を毎周期ブロードキャストする。1 メッセージを取りこぼしても受信側は現在状態を把握できる。
+- **常時配信（100Hz）**。フェイルセーフのため、状態を毎周期ブロードキャストする。1 メッセージを取りこぼしても受信側は現在状態を把握できる。
 - `data = true`: 非常停止中 / `data = false`: 解除中。
 - 初期状態は `false`（解除）。
 
@@ -172,6 +179,7 @@ PoseStamped
 ## 5. 後方互換性
 
 - WebSocket エンドポイント（`/joys`）・ポート（`8700`）・既存トピック（`/joy`, `/joy2`）・既存メッセージ形式は**すべて変更なし**。
+- クライアント配信の分離後も、オプションを付けずに `ros2 run joy_node_web joy_node` を起動すれば `http://<host>:8700/joy` で従来通りクライアントが得られる。分離は `--no-client` を指定したときだけ起こる。
 - コマンドは `command` フィールドの有無で判別するため、既存クライアントの送信データ（`command` を含まない）は従来通り `/joy`・`/joy2` として処理される。
 - 追加トピック（`/emergency_stop`, `/goal_pose`, `/cancel_goal`）は新規で、既存の購読者には影響しない。
 
@@ -188,3 +196,14 @@ ros2 topic echo /cancel_goal
 ```
 
 ブラウザで `http://<host>:8700/joy` を開き、「非常停止 / 解除 / ゴール送信 / キャンセル」ボタンを操作すると、上記トピックに反映される。
+
+分離構成の確認例:
+
+```bash
+# 端末1: ノード単体
+ros2 run joy_node_web joy_node --no-client
+# 端末2: クライアント配信単体（ノードと同じホストの 8700 を指す）
+ros2 run joy_node_web client_server --ws-port 8700
+```
+
+ブラウザで `http://<host>:8701/joy` を開くと、接続先欄が `ws://<host>:8700/joys` になり接続される。
