@@ -71,7 +71,13 @@
                   color: var(--muted); }
     .slot.unbound { border-style: dashed; border-color: #7a5a5a; }
     .slot.active { border-color: var(--accent); background: rgba(170,238,255,0.08); }
-    .slot.binding { border: 2px solid var(--accent); }
+    .slot.binding { border: 2px solid var(--accent);
+                    animation: slot-blink 0.8s steps(1, end) infinite; }
+    @keyframes slot-blink {
+      0%,   49% { border-color: var(--accent); background: rgba(170,238,255,0.22); }
+      50%, 100% { border-color: #5a5a5a; background: var(--panel); }
+    }
+    .bind-progress { color: var(--muted); font-weight: normal; margin-left: 8px; }
     .slot .val { font-size: 12px; font-family: monospace; font-weight: normal;
                  color: var(--muted); min-width: 44px; text-align: right; }
     .slot .inv { padding: 2px 7px; margin: 0; font-size: 12px; }
@@ -117,18 +123,23 @@
     <div class="km-toolbar">
       <label class="btn-file">ファイルから読み込み<input type="file" id="km-file" accept="application/json,.json" style="display:none" onchange="loadKeymapFile(event)"></label>
       <button onclick="saveKeymap()">JSONで保存</button>
+      <button onclick="startSequence()">順に割り当て</button>
       <button onclick="applyStandard()">標準割り当て</button>
       <button onclick="clearAllSlots()">全スロットクリア</button>
       <button onclick="clearKeymap()">キーマップ解除 (生データ)</button>
       <span class="km-info none" id="km-info">キーマップなし (生データ)</span>
     </div>
     <div class="bind-banner" id="bind-banner" hidden>
-      <span><b id="bind-slot-label"></b> にバインドする入力を操作してください</span>
-      <button onclick="cancelBind()">キャンセル</button>
+      <span><b id="bind-slot-label"></b> にバインドする入力を操作してください<span class="bind-progress" id="bind-progress"></span></span>
+      <span>
+        <button id="bind-skip" onclick="skipSlot()" hidden>スキップ</button>
+        <button id="bind-cancel" onclick="cancelBind()">キャンセル</button>
+      </span>
     </div>
     <div class="slot-grid" id="slot-grid"></div>
     <div class="km-hint">
-      スロットをクリックでバインド開始 / Shift+クリックでそのスロットをクリア /
+      「順に割り当て」で全スロットを先頭から順に設定（点滅中のスロットに対応する入力を操作すると次へ進みます）。
+      個別に設定する場合はスロットをクリック / Shift+クリックでそのスロットをクリア /
       軸・方向割り当ては「±」ボタンで符号反転。
       ファイル形式は <a href="https://g2e.s-phere.dev" target="_blank" rel="noopener" style="color:var(--accent)">g2e</a> と共通です。
     </div>
@@ -228,6 +239,8 @@ const pad_info = { id:'unknown', buttons:[], axes:[] };
 let   keymap   = null;   // null = raw passthrough, object = slot → binding
 let   keymapId = '';     // gamepadId recorded in the loaded / saved file
 let   bindSlot = null;   // slot currently waiting for an input
+let   seqActive = false; // walking through every slot in SLOT_ORDER
+let   seqIndex  = 0;     // position in SLOT_ORDER while seqActive
 let   prevButtons = [], prevAxes = [], bindStartAxes = [];
 
 // ── Logging ───────────────────────────────────────────────────────────────
@@ -486,23 +499,66 @@ function beginBind(slot) {
   prevButtons = gp ? gp.buttons.map(b => b.value) : [];
   prevAxes = gp ? Array.from(gp.axes) : [];
   bindStartAxes = prevAxes.slice();
-  document.getElementById('bind-slot-label').textContent = SLOT_LABEL[slot] || slot;
-  document.getElementById('bind-banner').hidden = false;
+  updateBindBanner();
   renderSlots();
 }
 function cancelBind() {
+  const wasSequence = seqActive;
+  seqActive = false;
   bindSlot = null;
-  document.getElementById('bind-banner').hidden = true;
+  updateBindBanner();
   renderSlots();
+  if (wasSequence) log('順に割り当てを中断', 'inf');
+}
+
+function updateBindBanner() {
+  const banner = document.getElementById('bind-banner');
+  if (!bindSlot) { banner.hidden = true; return; }
+  banner.hidden = false;
+  document.getElementById('bind-slot-label').textContent = SLOT_LABEL[bindSlot] || bindSlot;
+  document.getElementById('bind-progress').textContent =
+      seqActive ? '(' + (seqIndex + 1) + ' / ' + SLOT_ORDER.length + ')' : '';
+  document.getElementById('bind-skip').hidden = !seqActive;
+  document.getElementById('bind-cancel').textContent = seqActive ? '中断' : 'キャンセル';
+}
+
+// ── Sequential assignment ─────────────────────────────────────────────────
+// Walks SLOT_ORDER from the top: the slot waiting for input blinks, operating
+// the matching input binds it and the next slot starts blinking.
+function startSequence() {
+  if (!status.pad_connect) { log('ゲームパッドが未接続です', 'err'); return; }
+  seqActive = true;
+  seqIndex = 0;
+  log('順に割り当て開始: 点滅中のスロットに対応する入力を操作してください', 'inf');
+  beginBind(SLOT_ORDER[0]);
+}
+function advanceSequence() {
+  seqIndex += 1;
+  if (seqIndex >= SLOT_ORDER.length) {
+    seqActive = false;
+    bindSlot = null;
+    updateBindBanner();
+    renderSlots();
+    log('順に割り当て完了', 'ok');
+    return;
+  }
+  beginBind(SLOT_ORDER[seqIndex]);
+}
+function skipSlot() {
+  if (!seqActive) { cancelBind(); return; }
+  const slot = SLOT_ORDER[seqIndex];
+  log((SLOT_LABEL[slot] || slot) + ' をスキップ', 'inf');
+  advanceSequence();
 }
 function setBinding(slot, binding) {
   if (!keymap) keymap = {};
   keymap[slot] = binding;
   if (!keymapId && status.pad_connect) keymapId = pad_info.id;
   bindSlot = null;
-  document.getElementById('bind-banner').hidden = true;
-  persistKeymap(); setKeymapInfo(); renderSlots(); rebuildDisplay([], []);
+  persistKeymap(); setKeymapInfo(); rebuildDisplay([], []);
   log((SLOT_LABEL[slot] || slot) + ' → ' + bindingText(binding), 'ok');
+  if (seqActive) advanceSequence();
+  else { updateBindBanner(); renderSlots(); }
 }
 function clearSlot(slot) {
   if (!keymap || !(slot in keymap)) return;
@@ -522,6 +578,7 @@ function toggleInvert(slot) {
 function onSlotClick(slot, ev) {
   if (ev.shiftKey) { clearSlot(slot); return; }
   if (bindSlot === slot) { cancelBind(); return; }
+  if (seqActive) seqIndex = SLOT_ORDER.indexOf(slot);   // resume from here
   beginBind(slot);
 }
 
@@ -559,7 +616,9 @@ function updateSlotStates() {
     if (bindSlot === slot) cls += ' binding';
     else if (!b) cls += ' unbound';
     else if (Math.abs(v) > PRESS_THRESHOLD) cls += ' active';
-    el.className = cls;
+    // Only touch className when it actually changes: rewriting it every poll
+    // would restart the blink animation of the slot being bound.
+    if (el.className !== cls) el.className = cls;
   });
 }
 
