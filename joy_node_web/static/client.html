@@ -22,8 +22,6 @@
       position: sticky; top: 0; z-index: 10;
     }
     .app-title { font-size: 22px; letter-spacing: 0.04em; margin: 0; }
-    .app-title .sub { font-size: 13px; color: var(--muted); font-weight: normal;
-                      margin-left: 10px; letter-spacing: 0; }
     .conn-info { margin-left: auto; text-align: right; line-height: 1.35; }
     .conn-line { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
     .conn-state { font-size: 14px; color: var(--muted); }
@@ -37,10 +35,10 @@
 
     input[type=text] { background: #222; color: var(--fg); border: 1px solid #666;
                        padding: 6px 10px; font-size: 16px; margin-right: 8px; }
-    button, .btn-file { background: #555; color: var(--fg); border: 1px solid #888;
-                        padding: 6px 16px; cursor: pointer; font-size: 16px;
-                        font-weight: bold; margin-right: 8px; }
-    button:hover, .btn-file:hover { background: #777; }
+    button { background: #555; color: var(--fg); border: 1px solid #888;
+             padding: 6px 16px; cursor: pointer; font-size: 16px;
+             font-weight: bold; margin-right: 8px; }
+    button:hover { background: #777; }
     .dot { display: inline-block; width: 14px; height: 14px; border-radius: 50%;
            background: #888; }
     .dot.connected { background: var(--ok); }
@@ -56,7 +54,6 @@
     .km-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 0; }
     .km-info { font-size: 14px; margin-left: 4px; font-weight: normal; }
     .km-info.none { color: var(--muted); }
-    .km-hint { font-size: 13px; color: var(--muted); font-weight: normal; margin-top: 10px; }
     .bind-banner { display: flex; align-items: center; justify-content: space-between;
                    gap: 12px; margin-top: 12px; padding: 8px 12px; font-size: 15px;
                    border: 1px solid var(--accent); background: rgba(170,238,255,0.10); }
@@ -83,6 +80,17 @@
     .slot .inv { padding: 2px 7px; margin: 0; font-size: 12px; }
     .slot .inv.on { background: var(--accent); color: #222; border-color: var(--accent); }
 
+    /* ── Modal ────────────────────────────────────────────────────────── */
+    .modal-backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,0.65);
+                      display: flex; align-items: flex-start; justify-content: center;
+                      padding: 40px 16px; overflow-y: auto; }
+    .modal-backdrop[hidden] { display: none; }
+    .modal { width: 100%; max-width: 1040px; background: #2e2d2d;
+             border: 2px solid var(--line); padding: 18px 22px 24px; }
+    .modal-head { display: flex; align-items: center; justify-content: space-between;
+                  gap: 12px; margin-bottom: 14px; }
+    .modal-title { font-size: 18px; margin: 0; }
+
     /* ── Live values ──────────────────────────────────────────────────── */
     .axes-grid { display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 20px; }
     .axis-item { font-size: 16px; min-width: 160px; }
@@ -99,7 +107,7 @@
 </head>
 <body>
   <header class="app-header">
-    <h1 class="app-title">JoyNodeWeb<span class="sub">Gamepad → /joy</span></h1>
+    <h1 class="app-title">JoyNodeWeb</h1>
     <div class="conn-info">
       <div class="conn-line">
         <span class="dot" id="dot"></span>
@@ -121,28 +129,13 @@
   <div class="section">
     <h2>2. キーマップ</h2>
     <div class="km-toolbar">
-      <label class="btn-file">ファイルから読み込み<input type="file" id="km-file" accept="application/json,.json" style="display:none" onchange="loadKeymapFile(event)"></label>
-      <button onclick="saveKeymap()">JSONで保存</button>
-      <button onclick="startSequence()">順に割り当て</button>
-      <button onclick="applyStandard()">標準割り当て</button>
-      <button onclick="clearAllSlots()">全スロットクリア</button>
-      <button onclick="clearKeymap()">キーマップ解除 (生データ)</button>
-      <span class="km-info none" id="km-info">キーマップなし (生データ)</span>
+      <button onclick="openKeymapModal()">設定変更</button>
+      <button onclick="importKeymap()">インポート</button>
+      <button onclick="clearKeymap()">リセット</button>
+      <span class="km-info none" id="km-info">キーマップなし</span>
     </div>
-    <div class="bind-banner" id="bind-banner" hidden>
-      <span><b id="bind-slot-label"></b> にバインドする入力を操作してください<span class="bind-progress" id="bind-progress"></span></span>
-      <span>
-        <button id="bind-skip" onclick="skipSlot()" hidden>スキップ</button>
-        <button id="bind-cancel" onclick="cancelBind()">キャンセル</button>
-      </span>
-    </div>
-    <div class="slot-grid" id="slot-grid"></div>
-    <div class="km-hint">
-      「順に割り当て」で全スロットを先頭から順に設定（点滅中のスロットに対応する入力を操作すると次へ進みます）。
-      個別に設定する場合はスロットをクリック / Shift+クリックでそのスロットをクリア /
-      軸・方向割り当ては「±」ボタンで符号反転。
-      ファイル形式は <a href="https://g2e.s-phere.dev" target="_blank" rel="noopener" style="color:var(--accent)">g2e</a> と共通です。
-    </div>
+    <input type="file" id="km-file" accept="application/json,.json" style="display:none"
+           onchange="loadKeymapFile(event)">
   </div>
 
   <div class="section">
@@ -152,6 +145,29 @@
     <div class="btns-wrap"  id="btns-grid"></div>
   </div>
 </main>
+
+<div class="modal-backdrop" id="km-modal" hidden onclick="onModalBackdrop(event)">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 class="modal-title">キーマップ設定<span class="km-info" id="km-info-modal"></span></h3>
+      <button onclick="closeKeymapModal()">閉じる</button>
+    </div>
+    <div class="km-toolbar">
+      <button onclick="startSequence()">順に割り当て</button>
+      <button onclick="applyStandard()">標準割り当て</button>
+      <button onclick="clearAllSlots()">全スロットクリア</button>
+      <button onclick="saveKeymap()">JSONで保存</button>
+    </div>
+    <div class="bind-banner" id="bind-banner" hidden>
+      <span><b id="bind-slot-label"></b><span class="bind-progress" id="bind-progress"></span></span>
+      <span>
+        <button id="bind-skip" onclick="skipSlot()" hidden>スキップ</button>
+        <button id="bind-cancel" onclick="cancelBind()">キャンセル</button>
+      </span>
+    </div>
+    <div class="slot-grid" id="slot-grid"></div>
+  </div>
+</div>
 
 <!-- Server-injected configuration. Replaced by joy_node_web.client at
      delivery time; stays an empty object when the file is opened directly. -->
@@ -411,15 +427,17 @@ function persistKeymap() {
 }
 
 function setKeymapInfo() {
-  const el = document.getElementById('km-info');
-  if (!keymap) {
-    el.textContent = 'キーマップなし (生データ)';
-    el.className = 'km-info none';
-    return;
-  }
-  const n = Object.keys(keymap).length;
-  el.textContent = (keymapId || 'Unknown') + '  ' + n + '/' + ALL_SLOTS.length + ' 割り当て';
-  el.className = 'km-info';
+  const none = !keymap;
+  const text = none
+    ? 'キーマップなし'
+    : (keymapId || 'Unknown') + '  ' + Object.keys(keymap).length
+      + '/' + ALL_SLOTS.length + ' 割り当て';
+  ['km-info', 'km-info-modal'].forEach(function(id){
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text;
+    el.className = 'km-info' + (none ? ' none' : '');
+  });
 }
 
 function applyKeymapData(data) {
@@ -473,7 +491,9 @@ function saveKeymap() {
 
 function applyStandard() {
   keymap = JSON.parse(JSON.stringify(STANDARD_MAPPING));
-  if (!keymapId && status.pad_connect) keymapId = pad_info.id;
+  // A fresh standard map belongs to the pad in hand, so stamp its id even if
+  // an imported map for another pad was loaded before.
+  if (status.pad_connect) keymapId = pad_info.id;
   cancelBind(); persistKeymap(); setKeymapInfo(); renderSlots(); rebuildDisplay([], []);
   log('標準割り当てを適用', 'ok');
 }
@@ -485,12 +505,34 @@ function clearAllSlots() {
 function clearKeymap() {
   keymap = null; keymapId = '';
   cancelBind(); persistKeymap(); setKeymapInfo(); renderSlots(); rebuildDisplay([], []);
-  log('キーマップ解除 (生データを送信)', 'inf');
+  log('リセット: 割り当てを解除 (生データを送信)', 'inf');
 }
+
+// ── Keymap modal ──────────────────────────────────────────────────────────
+const kmModal = () => document.getElementById('km-modal');
+
+function openKeymapModal() {
+  kmModal().hidden = false;
+  renderSlots();
+}
+function closeKeymapModal() {
+  cancelBind();            // never leave a bind / sequence armed behind a closed modal
+  kmModal().hidden = true;
+}
+function onModalBackdrop(ev) {
+  if (ev.target === kmModal()) closeKeymapModal();
+}
+function importKeymap() {
+  document.getElementById('km-file').click();
+}
+window.addEventListener('keydown', function(ev){
+  if (ev.key === 'Escape' && !kmModal().hidden) closeKeymapModal();
+});
 
 // ── Binding UI ────────────────────────────────────────────────────────────
 function beginBind(slot) {
   if (!status.pad_connect) { log('ゲームパッドが未接続です', 'err'); return; }
+  if (kmModal().hidden) kmModal().hidden = false;
   bindSlot = slot;
   // Snapshot the live pad state, not the last polled one: the reference for
   // "what changed" (and a trigger's rest value) must be the instant the user
@@ -725,7 +767,7 @@ function updateGamepad() {
   pad_info.buttons = buttons;
 
   updateDisplay(axes, buttons, false);
-  updateSlotStates();
+  if (!kmModal().hidden) updateSlotStates();
 
   if (status.ws && status.ws.readyState === WebSocket.OPEN) {
     status.ws.send(JSON.stringify({id: pad_info.id, axes: axes, buttons: buttons}));
