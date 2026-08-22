@@ -75,5 +75,16 @@ python3 -m joy_node_web.client_server --ws-url ws://192.168.10.135:8700/joys
 nginx等の任意の静的サーバから配信することもできますが、その場合は設定が注入されないため`?ws=`で接続先を指定してください。
 コントローラのWebクライアントはCORSに違反しない範囲で自由に作成できます。
 
+# キーマップ
+
+クライアント画面の「2. キーマップ」でボタン / スティックの割り当てを設定できます。
+
+- スロットをクリックしてから割り当てたい入力を操作するとバインドされます
+- Shift+クリックでそのスロットをクリア、`±` で軸・方向割り当ての符号を反転
+- 「標準割り当て」でW3C標準ゲームパッド配列を一括適用、「キーマップ解除」で生データ送信に戻ります
+- 設定内容はブラウザに保存され、「JSONで保存」でファイル化できます
+
+キーマップファイルのフォーマットと解釈は [g2e (ESP-NOW Gamepad Bridge)](https://g2e.s-phere.dev) と共通で、相互に読み込めます。詳細は [docs/COMMUNICATION_SPEC.md](docs/COMMUNICATION_SPEC.md#4-キーマップ仕様g2e-互換) を参照してください。
+
 # 通信仕様
-WebSocket・ROS2トピックの通信仕様（ジョイスティック入力に加え、非常停止・解除、自動ゴール設定、キャンセルのコマンド）は [docs/COMMUNICATION_SPEC.md](docs/COMMUNICATION_SPEC.md) を参照してください。
+WebSocket・ROS2トピックの通信仕様は [docs/COMMUNICATION_SPEC.md](docs/COMMUNICATION_SPEC.md) を参照してください。
