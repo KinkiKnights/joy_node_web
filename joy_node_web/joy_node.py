@@ -38,17 +38,28 @@ async def websocket_endpoint(websocket: WebSocket):
         else:
             msg_in = msg
 
-        for i in range(len(gamepad_info["axes"])):
+        n_axes = len(gamepad_info["axes"])
+        for i in range(n_axes):
             if len(msg_in.axes) <= i:
                 msg_in.axes.append(gamepad_info["axes"][i])
             else:
                 msg_in.axes[i] = gamepad_info["axes"][i]
 
-        for i in range(len(gamepad_info["buttons"])):
+        n_buttons = len(gamepad_info["buttons"])
+        for i in range(n_buttons):
             if len(msg_in.buttons) <= i:
                 msg_in.buttons.append(int(gamepad_info["buttons"][i]))
             else:
                 msg_in.buttons[i] = int(gamepad_info["buttons"][i])
+
+        # Drop trailing entries the client no longer sends. Without this a
+        # switch to a controller with fewer axes / buttons would keep
+        # publishing the previous controller's stale (possibly non-zero)
+        # values at the tail of the message.
+        if len(msg_in.axes) > n_axes:
+            del msg_in.axes[n_axes:]
+        if len(msg_in.buttons) > n_buttons:
+            del msg_in.buttons[n_buttons:]
 
         # Fresh joy input arrived: pet the watchdog (see update_joy).
         last_joy_rx = time.monotonic()

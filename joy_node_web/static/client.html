@@ -30,9 +30,16 @@
                    color: var(--accent); word-break: break-all; }
 
     main { padding: 20px 24px 40px; }
-    .section { margin-bottom: 30px; }
-    .section h2 { font-size: 16px; color: var(--muted); font-weight: bold;
-                  margin: 0 0 10px; letter-spacing: 0.04em; }
+    .card-block { margin-bottom: 24px; }
+    .card-block:last-of-type { margin-bottom: 0; }
+    .card-block h2 { font-size: 16px; color: var(--muted); font-weight: bold;
+                     margin: 0 0 10px; letter-spacing: 0.04em; }
+    .card-foot { display: flex; align-items: center; justify-content: flex-end;
+                 flex-wrap: wrap; gap: 8px; margin-top: 22px; padding-top: 14px;
+                 border-top: 1px solid var(--line); }
+    .card-foot button { margin: 0; }
+    .km-actions { display: flex; gap: 8px; flex: 0 0 auto; }
+    .km-label { font-size: 15px; color: var(--muted); margin-right: 2px; }
 
     input[type=text], select { background: var(--panel); color: var(--fg);
                                border: 1px solid var(--line);
@@ -43,7 +50,7 @@
     /* ── Card ─────────────────────────────────────────────────────────── */
     .card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
             padding: 16px 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
-    .card > h2 { margin: 0 0 12px; }
+    .card { max-width: 1100px; }
     .card-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .card-row input[type=text] { flex: 1 1 260px; min-width: 200px; }
     .log-row { display: flex; align-items: center; gap: 10px; margin-top: 14px;
@@ -65,7 +72,9 @@
 
     /* ── Key mapping ──────────────────────────────────────────────────── */
     .km-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 0; }
-    .km-info { font-size: 14px; margin-left: 4px; font-weight: normal; }
+    .km-info { font-size: 14px; margin-right: 6px; font-weight: normal;
+               min-width: 0; overflow: hidden; text-overflow: ellipsis;
+               white-space: nowrap; }
     .km-info.none { color: var(--muted); }
     .bind-banner { display: flex; align-items: center; justify-content: space-between;
                    gap: 12px; margin-top: 12px; padding: 8px 12px; font-size: 15px;
@@ -105,21 +114,19 @@
                   gap: 12px; margin-bottom: 14px; }
     .modal-title { font-size: 18px; margin: 0; }
 
-    /* ── Live values ──────────────────────────────────────────────────── */
-    .axes-grid { display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 20px; }
-    .axis-item { font-size: 16px; min-width: 160px; }
-    .axis-lbl { margin-right: 8px; }
-    .axis-val { font-family: monospace; font-weight: normal; }
-    .axis-bar { height: 6px; background: #dcdfe4; margin-top: 4px; }
-    .axis-fill { height: 100%; background: var(--accent); width: 50%; }
-    .btns-wrap { display: flex; flex-wrap: wrap; gap: 10px; }
-    .bb { min-width: 44px; padding: 6px 8px; background: #eceef1;
-          border: 1px solid var(--line); text-align: center; font-size: 14px;
-          color: var(--muted); }
-    .bb.pressed { background: var(--accent); color: #fff; border-color: var(--accent); }
-    .pad-row { display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
-               flex-wrap: wrap; }
-    .pad-row label { font-size: 15px; color: var(--muted); }
+    /* ── Live values (wire dump) ──────────────────────────────────────── */
+    .wire { margin-bottom: 16px; }
+    .wire-head { font-size: 14px; color: var(--muted); font-weight: bold;
+                 margin-bottom: 4px; }
+    .wire-body { margin: 0; padding: 10px 12px; background: var(--panel);
+                 border: 1px solid var(--line); font-size: 13px;
+                 font-family: monospace; font-weight: normal; line-height: 1.6;
+                 white-space: pre; overflow-x: auto; }
+    .pad-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+    .pad-btns button { margin: 0; font-size: 14px; padding: 6px 12px; }
+    .pad-btns button.selected { background: var(--accent); color: #fff;
+                                border-color: var(--accent); }
+    .pad-none { font-size: 14px; font-weight: normal; color: var(--muted); }
   </style>
 </head>
 <body>
@@ -132,39 +139,48 @@
   </header>
 
 <main>
-  <div class="section card">
-    <h2>1. 接続</h2>
-    <div class="card-row">
-      <input type="text" id="ws-url" placeholder="ws://hostname/joys">
-      <button id="btn-connect" onclick="doConnect()">接続</button>
-      <button id="btn-disconnect" onclick="doDisconnect()" hidden>切断</button>
+  <div class="card">
+    <div class="card-block">
+      <h2>接続</h2>
+      <div class="card-row">
+        <input type="text" id="ws-url" placeholder="ws://hostname/joys">
+        <button id="btn-connect" onclick="doConnect()">接続</button>
+        <button id="btn-disconnect" onclick="doDisconnect()" hidden>切断</button>
+      </div>
+      <div class="log-row">
+        <span class="dot" id="dot"></span>
+        <span class="log-line" id="log-line">-</span>
+      </div>
     </div>
-    <div class="log-row">
-      <span class="dot" id="dot"></span>
-      <span class="log-line" id="log-line">-</span>
-    </div>
-  </div>
 
-  <div class="section">
-    <h2>2. キーマップ</h2>
-    <div class="km-toolbar">
-      <button onclick="openKeymapModal()">設定変更</button>
-      <button onclick="importKeymap()">インポート</button>
-      <button onclick="clearKeymap()">リセット</button>
+    <div class="card-block">
+      <h2>コントローラ</h2>
+      <div class="pad-btns" id="pad-btns"></div>
+    </div>
+
+    <div class="card-block">
+      <h2>送信中の値</h2>
+      <div class="wire">
+        <div class="wire-head" id="wire-axes-head">axes</div>
+        <pre class="wire-body" id="wire-axes">-</pre>
+      </div>
+      <div class="wire">
+        <div class="wire-head" id="wire-buttons-head">buttons</div>
+        <pre class="wire-body" id="wire-buttons">-</pre>
+      </div>
+    </div>
+
+    <div class="card-foot">
+      <span class="km-label">キーマップ</span>
       <span class="km-info none" id="km-info">キーマップなし</span>
+      <div class="km-actions">
+        <button onclick="openKeymapModal()">設定変更</button>
+        <button onclick="importKeymap()">インポート</button>
+        <button onclick="clearKeymap()">リセット</button>
+      </div>
     </div>
     <input type="file" id="km-file" accept="application/json,.json" style="display:none"
            onchange="loadKeymapFile(event)">
-  </div>
-
-  <div class="section">
-    <h2>3. 送信中の値</h2>
-    <div class="pad-row">
-      <label for="pad-select">コントローラ</label>
-      <select id="pad-select" onchange="onPadSelect(this.value)"></select>
-    </div>
-    <div class="axes-grid"  id="axes-grid"></div>
-    <div class="btns-wrap"  id="btns-grid"></div>
   </div>
 </main>
 
@@ -206,14 +222,6 @@ const STD_BUTTONS = [
 ];
 const STD_AXES = ['stick_l_x','stick_l_y','stick_r_x','stick_r_y'];
 
-// button groups (index into STD_BUTTONS): ABXY / LBRBLTRT / SELECT…HOME / dpad
-const BTN_GROUPS = [
-  [0,1,2,3],
-  [4,5,6,7],
-  [8,9,10,11,16],
-  [12,13,14,15],
-];
-
 // ── Key mapping model (kept compatible with https://g2e.s-phere.dev) ──────
 // Slots, binding kinds, evaluation, and the JSON file format all follow g2e,
 // so mapping files can be exchanged between the two tools.
@@ -252,17 +260,6 @@ const SLOT_LABEL = {
   stick_l_x:'L 左右 (X)', stick_l_y:'L 上下 (Y)',
   stick_r_x:'R 左右 (X)', stick_r_y:'R 上下 (Y)'
 };
-// short labels for the live value display
-const BTN_LABEL = {
-  face_down:'▼ A', face_right:'▶ B', face_left:'◀ X', face_up:'▲ Y',
-  shoulder_l:'LB', shoulder_r:'RB', trigger_l:'LT', trigger_r:'RT',
-  select:'Select', start:'Start', stick_l_click:'LS', stick_r_click:'RS',
-  dpad_up:'↑', dpad_down:'↓', dpad_left:'←', dpad_right:'→', home:'Home'
-};
-const AXIS_LABEL = {
-  stick_l_x:'LX', stick_l_y:'LY', stick_r_x:'RX', stick_r_y:'RY'
-};
-
 // binding detection thresholds (same values as g2e)
 const PRESS_THRESHOLD = 0.3;   // press / axis movement detected above this
 const AXIS_DIR_THRESHOLD = 0.5;  // threshold stored for a new axis_dir binding
@@ -825,31 +822,47 @@ function connectedPads() {
   return Array.from(pads).filter(function(p){ return p; });
 }
 
+// One button per detected pad; the selected one is highlighted.
+function renderPadButtons(pads) {
+  const box = document.getElementById('pad-btns');
+  box.textContent = '';
+  if (!pads.length) {
+    const span = document.createElement('span');
+    span.className = 'pad-none';
+    span.textContent = '(検出なし)';
+    box.appendChild(span);
+    return;
+  }
+  pads.forEach(function(p){
+    const b = document.createElement('button');
+    b.textContent = '[' + p.index + '] ' + p.id;
+    b.onclick = function(){ selectPad(p.index); };
+    box.appendChild(b);
+  });
+  markSelectedPadButton();
+}
+
+function markSelectedPadButton() {
+  const pads = connectedPads();
+  Array.from(document.querySelectorAll('#pad-btns button')).forEach(function(b, i){
+    const on = pads[i] && pads[i].index === status.pad_index;
+    const cls = 'pad-btn' + (on ? ' selected' : '');
+    if (b.className !== cls) b.className = cls;
+  });
+}
+
 function refreshPadList() {
   const pads = connectedPads();
-  const sel  = document.getElementById('pad-select');
   const sig  = pads.map(function(p){ return p.index + ':' + p.id; }).join('|');
 
   if (sig !== padListSig) {
     padListSig = sig;
-    sel.textContent = '';
-    if (!pads.length) {
-      const o = document.createElement('option');
-      o.value = ''; o.textContent = '(検出なし)';
-      sel.appendChild(o);
-    } else {
-      pads.forEach(function(p){
-        const o = document.createElement('option');
-        o.value = String(p.index);
-        o.textContent = '[' + p.index + '] ' + p.id;
-        sel.appendChild(o);
-      });
-    }
+    renderPadButtons(pads);
     // Keep the current pick if it is still around, otherwise take the first.
     if (!pads.some(function(p){ return p.index === status.pad_index; })) {
       selectPad(pads.length ? pads[0].index : -1);
     }
-    sel.value = status.pad_index >= 0 ? String(status.pad_index) : '';
+    markSelectedPadButton();
   }
 
   const cur = pads.find(function(p){ return p.index === status.pad_index; }) || null;
@@ -867,6 +880,7 @@ function refreshPadList() {
 function selectPad(index) {
   const changed = (index !== status.pad_index);
   status.pad_index = index;
+  markSelectedPadButton();
   cancelBind();
   const pad = connectedPads().find(function(p){ return p.index === index; }) || null;
   status.pad_connect = !!pad;
@@ -883,10 +897,6 @@ function selectPad(index) {
     setKeymapInfo(); renderSlots(); rebuildDisplay([], []);
     log('保存済みキーマップなし: 生データを送信', 'inf');
   }
-}
-
-function onPadSelect(value) {
-  selectPad(value === '' ? -1 : parseInt(value, 10));
 }
 
 window.addEventListener('gamepadconnected', function(e){
@@ -926,58 +936,41 @@ function updateGamepad() {
 }
 
 // ── Display ───────────────────────────────────────────────────────────────
-let _axisCount = -1, _btnCount = -1;
-
-function axisLabel(i) {
-  if (keymap && i < STD_AXES.length) return AXIS_LABEL[STD_AXES[i]] || STD_AXES[i];
-  return 'axis[' + i + ']';
+// The values actually put on the wire, as the index / value sequence that
+// /joy carries: axes as floats, buttons as sent (int, or the fractional
+// value of an axis mapped onto a button).
+// axes are always shown as floats; buttons as ints unless an axis mapped onto
+// a button makes them fractional.
+function formatWireValue(v, asFloat) {
+  const n = parseFloat(v) || 0;
+  if (asFloat || !Number.isInteger(n)) return n.toFixed(3);
+  return String(n);
 }
-function btnLabel(i) {
-  if (keymap && i < STD_BUTTONS.length) return BTN_LABEL[STD_BUTTONS[i]] || STD_BUTTONS[i];
-  return '' + i;
+
+function formatWire(values, asFloat) {
+  if (!values.length) return '(なし)';
+  const cells = values.map(function(v){ return formatWireValue(v, asFloat); });
+  const w = Math.max(3, ...cells.map(function(c){ return c.length; }));
+  const idx = values.map(function(_, i){ return String(i).padStart(w, ' '); });
+  return idx.join(' ') + '\n' + cells.map(function(c){ return c.padStart(w, ' '); }).join(' ');
+}
+
+function renderWire(name, values, asFloat) {
+  const head = document.getElementById('wire-' + name + '-head');
+  const body = document.getElementById('wire-' + name);
+  const title = name + ' [' + values.length + ']';
+  const text = formatWire(values, asFloat);
+  if (head.textContent !== title) head.textContent = title;
+  if (body.textContent !== text) body.textContent = text;
 }
 
 function rebuildDisplay(axes, buttons) {
-  _axisCount = axes.length;
-  _btnCount  = buttons.length;
-
-  const ag = document.getElementById('axes-grid');
-  ag.innerHTML = axes.map(function(_,i){
-    return '<div class="axis-item">'
-      + '<span class="axis-lbl">'+axisLabel(i)+'</span>'
-      + '<span class="axis-val" id="av'+i+'">0.000</span>'
-      + '<div class="axis-bar"><div class="axis-fill" id="ab'+i+'"></div></div>'
-      + '</div>';
-  }).join('');
-
-  const bg = document.getElementById('btns-grid');
-  if (keymap && buttons.length > 12) {
-    const BR = '<div style="flex-basis:100%;height:6px"></div>';
-    bg.innerHTML = BTN_GROUPS.map(function(group){
-      return group.filter(function(i){ return i < buttons.length; })
-                  .map(function(i){ return '<div class="bb" id="bb'+i+'">'+btnLabel(i)+'</div>'; })
-                  .join('');
-    }).join(BR);
-  } else {
-    bg.innerHTML = buttons.map(function(_,i){
-      return '<div class="bb" id="bb'+i+'">'+btnLabel(i)+'</div>';
-    }).join('');
-  }
+  updateDisplay(axes, buttons, false);
 }
 
 function updateDisplay(axes, buttons, fromCan) {
-  if (axes.length !== _axisCount || buttons.length !== _btnCount) {
-    rebuildDisplay(axes, buttons);
-  }
-  axes.forEach(function(v,i){
-    var el=document.getElementById('av'+i), br=document.getElementById('ab'+i);
-    if(el) el.textContent = parseFloat(v).toFixed(3);
-    if(br) br.style.width = ((parseFloat(v)+1)*50)+'%';
-  });
-  buttons.forEach(function(v,i){
-    var el=document.getElementById('bb'+i);
-    if(el) el.className='bb'+(v?' pressed':'');
-  });
+  renderWire('axes', Array.from(axes || []), true);
+  renderWire('buttons', Array.from(buttons || []), false);
 }
 
 // ── Startup ───────────────────────────────────────────────────────────────
