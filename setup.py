@@ -6,10 +6,13 @@ setup(
     name=package_name,
     version='0.0.0',
     packages=find_packages(exclude=['test']),
+    package_data={package_name: ['static/*.html']},
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        ('share/' + package_name + '/static',
+            ['joy_node_web/static/client.html']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -20,7 +23,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'joy_node = joy_node_web.joy_node:main'
+            'joy_node = joy_node_web.joy_node:main',
+            'client_server = joy_node_web.client_server:main'
         ],
     },
 )

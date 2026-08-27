@@ -1,0 +1,1185 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JoyNodeWebClient</title>
+  <style>
+    :root {
+      color-scheme: light;
+      /* KINKI KNIGHTS colours (kinkiknights.com) */
+      --bg: #f2f8fb;          /* light blue tinted ground */
+      --panel: #ffffff;
+      --fg: #1d242b;
+      --muted: #5b6770;
+      --line: #dde3e8;
+      --accent: #15719c;      /* primary blue */
+      --accent-strong: #115a7d;
+      --accent-bright: #47b9e6;
+      --accent-soft: rgba(21,113,156,0.08);
+      --ok: #1a7f37; --warn: #b26a00; --err: #c62828;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--fg);
+           font-family: "Noto Sans JP", 游ゴシック体, YuGothic, 游ゴシック,
+                        -apple-system, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+           font-weight: bold; font-size: 18px; }
+
+    /* ── Header ───────────────────────────────────────────────────────── */
+    header.app-header {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 16px; flex-wrap: wrap;
+      padding: 14px 24px; background: rgba(255,255,255,0.96);
+      border-bottom: 1px solid var(--line);
+      position: sticky; top: 0; z-index: 10;
+    }
+    .app-title { font-size: 22px; font-weight: 900; letter-spacing: 0.04em; margin: 0; }
+    .powered { font-size: 13px; font-weight: bold; color: var(--muted);
+               letter-spacing: 0.04em; }
+    .powered .brand { color: var(--accent); font-weight: 900; letter-spacing: 0.08em; }
+    .conn-lamp { display: inline-flex; align-items: center; gap: 8px;
+                 min-width: 108px; }
+    .conn-state { font-size: 15px; }
+
+    main { padding: 20px 24px 40px; }
+    .card-block { margin-bottom: 24px; }
+    .card-block:last-of-type { margin-bottom: 0; }
+    .card-block h2 { font-size: 16px; color: var(--muted); font-weight: bold;
+                     margin: 0 0 10px; letter-spacing: 0.04em; }
+    .card-foot { display: flex; align-items: center; justify-content: flex-end;
+                 flex-wrap: wrap; gap: 8px; margin-top: 22px; padding-top: 14px;
+                 border-top: 1px solid var(--line); }
+    .card-foot button { margin: 0; }
+    .km-actions { display: flex; gap: 8px; flex: 0 0 auto; }
+    .km-label { font-size: 15px; color: var(--muted); margin-right: 2px; }
+
+    input[type=text], select { background: var(--panel); color: var(--fg);
+                               border: 1px solid var(--line); border-radius: 4px;
+                               padding: 6px 10px; font-size: 16px; }
+    input[type=text]:focus { outline: none; border-color: var(--accent-bright); }
+    input[type=text]:disabled { background: var(--bg); color: var(--muted); }
+    select { font-weight: bold; max-width: 100%; }
+
+    /* ── Cards ────────────────────────────────────────────────────────── */
+    /* One card per connection. Several cards tile in a grid that wraps in
+       both directions; a single card keeps the original centred width. */
+    .cards { display: grid; gap: 20px;
+             grid-template-columns: repeat(auto-fit, minmax(430px, 1fr)); }
+    .cards.single { grid-template-columns: minmax(0, 1100px); }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+            padding: 18px 20px; box-shadow: 0 2px 10px rgba(29,36,43,0.06);
+            min-width: 0; }
+    .card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .card-no { font-size: 18px; font-weight: 900; color: var(--accent); }
+    .card-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .card-row input[type=text] { flex: 0 1 300px; min-width: 160px; font-size: 15px; }
+    .card-row button { padding: 6px 14px; }
+    .log-row { display: flex; align-items: center; gap: 10px; margin-top: 14px;
+               background: var(--bg); border: 1px solid var(--line);
+               border-radius: 4px; padding: 8px 10px; }
+    .log-line { font-size: 13px; font-weight: normal; font-family: monospace;
+                color: var(--fg); white-space: nowrap; overflow: hidden;
+                text-overflow: ellipsis; }
+    .log-line.ok { color: var(--ok); }
+    .log-line.err { color: var(--err); }
+    button { background: #eef4f8; color: var(--fg); border: 1px solid var(--line);
+             border-radius: 4px; padding: 6px 16px; cursor: pointer; font-size: 16px;
+             font-weight: bold; margin-right: 8px; }
+    button:hover { background: #e0ebf2; }
+    /* the site's call-to-action look, kept to the primary actions only */
+    .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .btn-primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+    .dot { display: inline-block; width: 14px; height: 14px; border-radius: 50%;
+           background: #c3ccd3; }
+    .dot.connected { background: var(--ok); }
+    .dot.connecting { background: var(--warn); }
+    .dot.error { background: var(--err); }
+
+    /* ── Key mapping ──────────────────────────────────────────────────── */
+    .km-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 0; }
+    .km-info { font-size: 14px; margin-right: 6px; font-weight: normal;
+               min-width: 0; overflow: hidden; text-overflow: ellipsis;
+               white-space: nowrap; }
+    .km-info.none { color: var(--muted); }
+    .bind-banner { display: flex; align-items: center; justify-content: space-between;
+                   gap: 12px; margin-top: 12px; padding: 8px 12px; font-size: 15px;
+                   border: 1px solid var(--accent); background: var(--accent-soft);
+                   border-radius: 4px; }
+    .bind-banner[hidden] { display: none; }
+    .slot-grid { display: grid; gap: 8px; margin-top: 12px;
+                 grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); }
+    .slot { border: 1px solid var(--line); background: var(--panel); border-radius: 4px;
+            padding: 8px 10px; display: flex; align-items: center; gap: 8px; }
+    .slot .body { flex: 1; cursor: pointer; min-width: 0; }
+    .slot .name { font-size: 15px; }
+    .slot .bind { font-size: 13px; font-family: monospace; font-weight: normal;
+                  color: var(--muted); }
+    .slot.unbound { border-style: dashed; border-color: #c9b1b1; }
+    .slot.active { border-color: var(--accent-bright); background: var(--accent-soft); }
+    .slot.binding { border: 2px solid var(--accent);
+                    animation: slot-blink 0.8s steps(1, end) infinite; }
+    @keyframes slot-blink {
+      0%,   49% { border-color: var(--accent); background: rgba(71,185,230,0.22); }
+      50%, 100% { border-color: var(--line); background: var(--panel); }
+    }
+    .bind-progress { color: var(--muted); font-weight: normal; margin-left: 8px; }
+    .slot .val { font-size: 12px; font-family: monospace; font-weight: normal;
+                 color: var(--muted); min-width: 44px; text-align: right; }
+    .slot .inv { padding: 2px 7px; margin: 0; font-size: 12px; }
+    .slot .inv.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .card-block h2 { color: var(--muted); }
+
+    /* ── Modal ────────────────────────────────────────────────────────── */
+    .modal-backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(29,36,43,0.38);
+                      display: flex; align-items: flex-start; justify-content: center;
+                      padding: 40px 16px; overflow-y: auto; }
+    .modal-backdrop[hidden] { display: none; }
+    .modal { width: 100%; max-width: 1040px; background: var(--panel);
+             border: 1px solid var(--line); border-radius: 10px;
+             box-shadow: 0 10px 30px rgba(29,36,43,0.22); padding: 18px 22px 24px; }
+    .modal-head { display: flex; align-items: center; justify-content: space-between;
+                  gap: 12px; margin-bottom: 14px; }
+    .modal-title { font-size: 18px; font-weight: 900; margin: 0; }
+    .modal-title .km-info { margin-left: 8px; }
+    .modal-no { color: var(--accent); font-weight: 900; margin-right: 8px; }
+
+    /* ── Live values ──────────────────────────────────────────────────── */
+    .wire-body { margin: 0; padding: 10px 12px; background: var(--bg);
+                 border: 1px solid var(--line); border-radius: 4px; font-size: 13px;
+                 font-family: monospace; font-weight: normal; line-height: 1.7; }
+    .wire-line { white-space: pre-wrap; word-break: break-word; }
+    .pad-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+    .pad-btns button { margin: 0; font-size: 14px; padding: 6px 12px; }
+    .pad-btns button.selected { background: var(--accent); color: #fff;
+                                border-color: var(--accent); }
+    .pad-btns button.selected:hover { background: var(--accent-strong); }
+    .pad-none { font-size: 14px; font-weight: normal; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <h1 class="app-title">JoyNodeWeb</h1>
+    <span class="powered">Powered by <span class="brand">KINKI KNIGHTS</span></span>
+  </header>
+
+<main>
+  <div class="cards" id="cards"></div>
+</main>
+
+<!-- One card = one connection. Cloned per card; the markup carries no ids so
+     that several instances can never reach each other's elements. -->
+<template id="card-tpl">
+  <div class="card">
+    <div class="card-head" hidden>
+      <span class="card-no"></span>
+    </div>
+
+    <div class="card-block">
+      <h2>接続</h2>
+      <div class="card-row">
+        <span class="conn-lamp">
+          <span class="dot"></span>
+          <span class="conn-state">未接続</span>
+        </span>
+        <input type="text" class="ws-url" placeholder="ws://hostname/joys">
+        <button class="btn-connect btn-primary">接続</button>
+        <button class="btn-disconnect" hidden>切断</button>
+      </div>
+      <div class="log-row">
+        <span class="log-line">-</span>
+      </div>
+    </div>
+
+    <div class="card-block">
+      <h2>コントローラ</h2>
+      <div class="pad-btns"></div>
+    </div>
+
+    <div class="card-block">
+      <h2>現在値</h2>
+      <div class="wire-body">
+        <div class="wire-line wire-axes">Axes:</div>
+        <div class="wire-line wire-buttons">Buttons:</div>
+      </div>
+    </div>
+
+    <div class="card-foot">
+      <span class="km-label">キーマップ</span>
+      <span class="km-info none">キーマップなし</span>
+      <div class="km-actions">
+        <button class="btn-km btn-primary">設定変更</button>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" hidden>
+      <div class="modal">
+        <div class="modal-head">
+          <h3 class="modal-title"><span class="modal-no"></span>キーマップ設定<span class="km-info"></span></h3>
+          <button class="btn-modal-close">閉じる</button>
+        </div>
+        <div class="km-toolbar">
+          <button class="btn-seq btn-primary">割当開始</button>
+          <button class="btn-clear">クリア</button>
+          <button class="btn-import">インポート</button>
+          <button class="btn-export">エクスポート</button>
+        </div>
+        <div class="bind-banner" hidden>
+          <span><b class="bind-slot-label"></b><span class="bind-progress"></span></span>
+          <span>
+            <button class="bind-skip" hidden>スキップ</button>
+            <button class="bind-cancel">キャンセル</button>
+          </span>
+        </div>
+        <div class="slot-grid"></div>
+        <input type="file" class="km-file" accept="application/json,.json" style="display:none">
+      </div>
+    </div>
+  </div>
+</template>
+
+<!-- Server-injected configuration. Replaced by joy_node_web.client at
+     delivery time; stays an empty object when the file is opened directly. -->
+<script id="server-cfg" type="application/json">{{SERVER_CFG}}</script>
+
+<script>
+// ── Joy message layout (W3C standard gamepad order) ───────────────────────
+// The index of a slot in these arrays is its index in the published
+// sensor_msgs/Joy message, so the order must not change.
+const STD_BUTTONS = [
+  'face_down','face_right','face_left','face_up',
+  'shoulder_l','shoulder_r','trigger_l','trigger_r',
+  'select','start','stick_l_click','stick_r_click',
+  'dpad_up','dpad_down','dpad_left','dpad_right','home'
+];
+const STD_AXES = ['stick_l_x','stick_l_y','stick_r_x','stick_r_y'];
+
+// ── Key mapping model (kept compatible with https://g2e.s-phere.dev) ──────
+// Slots, binding kinds, evaluation, and the JSON file format all follow g2e,
+// so mapping files can be exchanged between the two tools.
+const AXIS_SLOTS = ['stick_l_x','stick_l_y','stick_r_x','stick_r_y'];
+const TRIGGER_SLOTS = ['trigger_l','trigger_r'];
+const STANDARD_MAPPING = {
+  face_down:{kind:'button',index:0},   face_right:{kind:'button',index:1},
+  face_left:{kind:'button',index:2},   face_up:{kind:'button',index:3},
+  shoulder_l:{kind:'button',index:4},  shoulder_r:{kind:'button',index:5},
+  trigger_l:{kind:'button',index:6},   trigger_r:{kind:'button',index:7},
+  select:{kind:'button',index:8},      start:{kind:'button',index:9},
+  home:{kind:'button',index:16},
+  stick_l_click:{kind:'button',index:10}, stick_r_click:{kind:'button',index:11},
+  dpad_up:{kind:'button',index:12},    dpad_down:{kind:'button',index:13},
+  dpad_left:{kind:'button',index:14},  dpad_right:{kind:'button',index:15},
+  stick_l_x:{kind:'axis',index:0},     stick_l_y:{kind:'axis',index:1},
+  stick_r_x:{kind:'axis',index:2},     stick_r_y:{kind:'axis',index:3}
+};
+const ALL_SLOTS = Object.keys(STANDARD_MAPPING);
+
+// display order and labels for the mapping editor (g2e order)
+const SLOT_ORDER = [
+  'trigger_l','shoulder_l','trigger_r','shoulder_r',
+  'select','start','home',
+  'face_up','face_right','face_down','face_left',
+  'dpad_up','dpad_right','dpad_down','dpad_left',
+  'stick_l_click','stick_l_x','stick_l_y',
+  'stick_r_click','stick_r_x','stick_r_y'
+];
+const SLOT_LABEL = {
+  face_down:'A', face_right:'B', face_left:'X', face_up:'Y',
+  shoulder_l:'LB', shoulder_r:'RB', trigger_l:'LT', trigger_r:'RT',
+  select:'View', start:'Menu', home:'Home',
+  stick_l_click:'L3', stick_r_click:'R3',
+  dpad_up:'D-pad ↑', dpad_down:'D-pad ↓', dpad_left:'D-pad ←', dpad_right:'D-pad →',
+  stick_l_x:'L 左右 (X)', stick_l_y:'L 上下 (Y)',
+  stick_r_x:'R 左右 (X)', stick_r_y:'R 上下 (Y)'
+};
+// binding detection thresholds (same values as g2e)
+const PRESS_THRESHOLD = 0.3;   // press / axis movement detected above this
+const AXIS_DIR_THRESHOLD = 0.5;  // threshold stored for a new axis_dir binding
+const TRIGGER_DELTA = 0.4;     // axis travel that identifies a trigger axis
+
+const MAX_CARDS = 12;          // sanity bound for ?num=
+const POLL_MS = 50;
+const RETRY_MS = 5000;
+
+// connected / connecting / failed / idle → lamp and label
+const CONN_STATES = {
+  connected:  { dot: 'connected',  text: '接続済' },
+  connecting: { dot: 'connecting', text: '接続中...' },
+  failed:     { dot: 'error',      text: '接続失敗' },
+  idle:       { dot: '',           text: '未接続' }
+};
+
+// ── Shared helpers ────────────────────────────────────────────────────────
+// Nothing below holds per-card state: every function is pure or touches only
+// the keymap store, which is shared on purpose (a keymap belongs to a pad
+// name, not to a card).
+
+function notify(msg, cls) {
+  if (cls === 'err') console.warn('[joy] ' + msg);
+  else console.log('[joy] ' + msg);
+}
+
+// ── Binding evaluation (identical semantics to g2e) ───────────────────────
+function evalBinding(b, rawButtons, rawAxes) {
+  if (!b) return 0;
+  if (b.kind === 'button') return rawButtons[b.index] ?? 0;
+  if (b.kind === 'axis') {
+    let v = rawAxes[b.index] ?? 0;
+    if (b.deadzone && Math.abs(v) < b.deadzone) v = 0;
+    if (b.invert) v = -v;
+    return v;
+  }
+  if (b.kind === 'axis_trigger') {
+    const v = rawAxes[b.index] ?? 0;
+    const span = b.full - b.rest;
+    if (span === 0) return 0;
+    return Math.max(0, Math.min(1, (v - b.rest) / span));
+  }
+  if (b.kind === 'axis_dir') {
+    const v = rawAxes[b.index] ?? 0;
+    const r = b.positive ? v : -v;
+    if (r < b.threshold) return 0;
+    const span = 1 - b.threshold;
+    return span <= 0 ? 1 : Math.min(1, (r - b.threshold) / span);
+  }
+  return 0;
+}
+
+function bindingText(b) {
+  if (!b) return '未割り当て';
+  if (b.kind === 'button') return 'btn['+b.index+']';
+  if (b.kind === 'axis') return 'axis['+b.index+']'+(b.invert ? ' (inv)' : '');
+  if (b.kind === 'axis_trigger') return 'axis['+b.index+'] (trig)';
+  return 'axis['+b.index+']'+(b.positive ? '+' : '−');
+}
+
+// ── Mapping file format (g2e compatible) ──────────────────────────────────
+const isIndex = (v)=> typeof v === 'number' && Number.isInteger(v) && v >= 0;
+const isNum   = (v)=> typeof v === 'number' && Number.isFinite(v);
+
+function sanitizeBinding(b) {
+  if (typeof b !== 'object' || !b) return null;
+  if (!isIndex(b.index)) return null;
+  switch (b.kind) {
+    case 'button':
+      return { kind:'button', index:b.index };
+    case 'axis': {
+      const o = { kind:'axis', index:b.index };
+      if (typeof b.invert === 'boolean') o.invert = b.invert;
+      if (isNum(b.deadzone)) o.deadzone = b.deadzone;
+      return o;
+    }
+    case 'axis_dir':
+      if (typeof b.positive !== 'boolean' || !isNum(b.threshold)) return null;
+      return { kind:'axis_dir', index:b.index, positive:b.positive,
+               threshold: Math.min(0.99, Math.max(0, b.threshold)) };
+    case 'axis_trigger':
+      if (!isNum(b.rest) || !isNum(b.full)) return null;
+      return { kind:'axis_trigger', index:b.index, rest:b.rest, full:b.full };
+    default:
+      return null;
+  }
+}
+function sanitizeMapping(m) {
+  const out = {};
+  if (typeof m !== 'object' || !m) return out;
+  for (const slot of ALL_SLOTS) {
+    if (slot in m) {
+      const b = sanitizeBinding(m[slot]);
+      if (b) out[slot] = b;
+    }
+  }
+  return out;
+}
+
+// ── Keymap store (shared: keyed by gamepad name) ──────────────────────────
+// { "<gamepad id>": <file object> }. A pad whose name is in the store gets
+// its keymap applied when a card selects it.
+const KEYMAP_STORAGE = 'joy_keymaps';
+const KEYMAP_STORAGE_LEGACY = 'joy_keymap';   // pre-per-pad single entry
+
+function loadKeymapStore() {
+  try {
+    const o = JSON.parse(localStorage.getItem(KEYMAP_STORAGE) || '{}');
+    return (o && typeof o === 'object') ? o : {};
+  } catch(_) { return {}; }
+}
+function saveKeymapStore(store) {
+  localStorage.setItem(KEYMAP_STORAGE, JSON.stringify(store));
+}
+function storedKeymapFor(padId) {
+  if (!padId) return null;
+  const data = loadKeymapStore()[padId];
+  return (data && typeof data.mapping === 'object' && data.mapping) ? data : null;
+}
+function storeKeymapFor(padId, fileObject) {
+  if (!padId) return;
+  const store = loadKeymapStore();
+  store[padId] = fileObject;
+  saveKeymapStore(store);
+}
+function dropKeymapFor(padId) {
+  if (!padId) return;
+  const store = loadKeymapStore();
+  delete store[padId];
+  saveKeymapStore(store);
+}
+
+// One-time move of the old single-keymap entry into the per-pad store.
+(function migrateLegacyKeymap(){
+  const raw = localStorage.getItem(KEYMAP_STORAGE_LEGACY);
+  if (!raw) return;
+  try {
+    const data = JSON.parse(raw);
+    if (data && typeof data.mapping === 'object' && data.mapping
+        && typeof data.gamepadId === 'string' && data.gamepadId) {
+      const store = loadKeymapStore();
+      if (!store[data.gamepadId]) { store[data.gamepadId] = data; saveKeymapStore(store); }
+    }
+  } catch(_) { /* discard unreadable legacy entry */ }
+  localStorage.removeItem(KEYMAP_STORAGE_LEGACY);
+})();
+
+// ── Gamepads ──────────────────────────────────────────────────────────────
+// Read once per tick and handed to every card, so all cards see the same
+// frame and none of them mutates what the others read.
+function connectedPads() {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  return Array.from(pads).filter(function(p){ return p; });
+}
+
+// ── Server config ─────────────────────────────────────────────────────────
+// Injected by the delivery server (joy_node_web.client). Empty when this
+// file is opened directly, in which case the defaults below apply.
+const SERVER_CFG = (function(){
+  const el = document.getElementById('server-cfg');
+  try { return JSON.parse(el.textContent) || {}; } catch(_) { return {}; }
+})();
+
+const uri_obj = new URL(window.location.href);
+
+// Resolution order for a card's node (/joys) endpoint:
+//   1. ?ws=... query parameter (comma separated: one entry per card)
+//   2. SERVER_CFG.ws_url              … fixed URL given to the server
+//   3. same host + SERVER_CFG.ws_port … port omitted → this page's origin
+// Deliberately not remembered across visits: a saved URL would silently
+// point a page served by one robot at another robot's node.
+function derivedWsUrl() {
+  const scheme = (uri_obj.protocol === 'https:') ? 'wss' : 'ws';
+  const port   = SERVER_CFG.ws_port || uri_obj.port;
+  return scheme + '://' + uri_obj.hostname + (port ? ':' + port : '') + '/joys';
+}
+const WS_PARAM_LIST = (uri_obj.searchParams.get('ws') || '')
+  .split(',').map(function(s){ return s.trim(); }).filter(function(s){ return s; });
+
+// A URL explicitly meant for this card, or null when only the fallback applies.
+function explicitWsUrl(cardIndex) {
+  if (WS_PARAM_LIST.length) return WS_PARAM_LIST[cardIndex] || null;
+  return SERVER_CFG.ws_url || null;
+}
+
+// ── Card count ────────────────────────────────────────────────────────────
+// ?num=N renders N cards; without it the page is the plain single-card tool.
+function requestedCardCount() {
+  const raw = uri_obj.searchParams.get('num');
+  if (raw === null) return 1;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(n, MAX_CARDS);
+}
+
+// ── Current-value formatting ──────────────────────────────────────────────
+// axes are always shown as floats; buttons as ints unless an axis mapped onto
+// a button makes them fractional.
+function formatWireValue(v, asFloat) {
+  const n = parseFloat(v) || 0;
+  if (asFloat || !Number.isInteger(n)) return n.toFixed(3);
+  return String(n);
+}
+function setWireLine(el, label, values, asFloat) {
+  const body = values.length
+    ? values.map(function(v){ return formatWireValue(v, asFloat); }).join(', ')
+    : '-';
+  const text = label + ': ' + body;
+  if (el.textContent !== text) el.textContent = text;
+}
+
+// ── One card = one independent connection ─────────────────────────────────
+// Every mutable value a card needs lives on the instance, and every element
+// it touches comes from its own cloned subtree. Cards share only constants
+// and the keymap store, so nothing can leak between them.
+class JoyCard {
+  constructor(index, total) {
+    this.index = index;                 // 0-based
+    this.label = '#' + (index + 1);
+    this.total = total;
+
+    // connection
+    this.ws = null;
+    this.trying = false;
+    this.armed = false;                 // a connection was asked for at least once
+    this.manualDisconnect = false;
+
+    // controller
+    this.padIndex = -1;
+    this.padConnected = false;
+    this.padId = 'unknown';
+    this.rawAxes = [];
+    this.rawButtons = [];
+    this.padListSig = null;
+    this.padButtons = [];               // [{index, el}]
+
+    // keymap
+    this.keymap = null;                 // null = raw passthrough
+    this.keymapId = '';
+
+    // binding
+    this.bindSlot = null;
+    this.seqActive = false;
+    this.seqIndex = 0;
+    this.prevButtons = [];
+    this.prevAxes = [];
+    this.bindStartAxes = [];
+    this.slotEls = new Map();           // slot → {root, bind, val, inv}
+
+    this.buildDom();
+    this.setConnUi('idle');
+    this.setKeymapInfo();
+    this.renderSlots();
+  }
+
+  // ── DOM ─────────────────────────────────────────────────────────────────
+  buildDom() {
+    const tpl = document.getElementById('card-tpl');
+    this.el = tpl.content.firstElementChild.cloneNode(true);
+    const q = (sel) => this.el.querySelector(sel);
+
+    this.ui = {
+      head:          q('.card-head'),
+      no:            q('.card-no'),
+      dot:           q('.dot'),
+      state:         q('.conn-state'),
+      url:           q('.ws-url'),
+      btnConnect:    q('.btn-connect'),
+      btnDisconnect: q('.btn-disconnect'),
+      logLine:       q('.log-line'),
+      padBox:        q('.pad-btns'),
+      wireAxes:      q('.wire-axes'),
+      wireButtons:   q('.wire-buttons'),
+      kmInfos:       Array.from(this.el.querySelectorAll('.km-info')),
+      modal:         q('.modal-backdrop'),
+      modalNo:       q('.modal-no'),
+      banner:        q('.bind-banner'),
+      bannerLabel:   q('.bind-slot-label'),
+      bannerProg:    q('.bind-progress'),
+      bannerSkip:    q('.bind-skip'),
+      bannerCancel:  q('.bind-cancel'),
+      slotGrid:      q('.slot-grid'),
+      file:          q('.km-file')
+    };
+
+    if (this.total > 1) {
+      this.ui.head.hidden = false;
+      this.ui.no.textContent = this.label;
+      this.ui.modalNo.textContent = this.label;
+    }
+
+    this.ui.url.value = explicitWsUrl(this.index) || derivedWsUrl();
+
+    this.ui.btnConnect.onclick     = () => this.connect();
+    this.ui.btnDisconnect.onclick  = () => this.disconnect();
+    q('.btn-km').onclick           = () => this.openModal();
+    q('.btn-modal-close').onclick  = () => this.closeModal();
+    q('.btn-seq').onclick          = () => this.startSequence();
+    q('.btn-clear').onclick        = () => this.clearKeymap();
+    q('.btn-import').onclick       = () => this.ui.file.click();
+    q('.btn-export').onclick       = () => this.exportKeymap();
+    this.ui.bannerSkip.onclick     = () => this.skipSlot();
+    this.ui.bannerCancel.onclick   = () => this.cancelBind();
+    this.ui.file.onchange          = (ev) => this.loadKeymapFile(ev);
+    this.ui.modal.onclick = (ev) => { if (ev.target === this.ui.modal) this.closeModal(); };
+  }
+
+  // ── Logging (WebSocket connection events only) ──────────────────────────
+  log(msg, cls) {
+    const now = new Date().toTimeString().slice(0,8);
+    this.ui.logLine.className = 'log-line' + (cls && cls !== 'inf' ? ' ' + cls : '');
+    this.ui.logLine.textContent = now + '  ' + msg;
+  }
+  note(msg, cls) {                      // console only, tagged with the card
+    notify(this.label + ' ' + msg, cls);
+  }
+
+  // ── Connection ──────────────────────────────────────────────────────────
+  setConnUi(state) {
+    const s = CONN_STATES[state] || CONN_STATES.idle;
+    this.ui.dot.className = 'dot' + (s.dot ? ' ' + s.dot : '');
+    this.ui.state.textContent = s.text;
+    this.ui.btnConnect.hidden = (state === 'connected');
+    this.ui.btnDisconnect.hidden = (state !== 'connected');
+    this.ui.url.disabled = (state === 'connected');
+  }
+
+  connect() {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) { this.log('接続済み','inf'); return; }
+    const url = this.ui.url.value.trim();
+    if (!url) return;
+    this.armed = true;
+    this.manualDisconnect = false;      // re-enable auto retry
+    this.wsInit(url);
+  }
+
+  disconnect() {
+    if (this.ws) { this.ws.onclose = null; this.ws.close(); this.ws = null; }
+    this.trying = false;
+    this.manualDisconnect = true;       // stay down until 接続 is pressed
+    this.setConnUi('idle');
+    this.log('切断しました','err');
+  }
+
+  wsInit(url) {
+    if (this.trying) return;
+    this.trying = true;
+    this.setConnUi('connecting');
+    this.log('接続中 '+url+' …','inf');
+    const ws = new WebSocket(url);
+    // A socket this card has already replaced must never drive its UI again.
+    ws.onopen = () => {
+      this.ws = ws; this.trying = false;
+      this.setConnUi('connected');
+      this.log('接続: '+url,'ok');
+    };
+    ws.onclose = () => {
+      if (this.ws && this.ws !== ws) return;
+      this.ws = null; this.trying = false;
+      this.setConnUi(this.manualDisconnect ? 'idle' : 'failed');
+      this.log(this.manualDisconnect ? '切断' : '接続失敗','err');
+    };
+    ws.onerror = () => { if (!this.ws || this.ws === ws) this.log('WebSocket エラー','err'); };
+    ws.onmessage = (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        if (d.source === 'can') this.renderWire(d.axes, d.buttons);
+      } catch(_) {}
+    };
+  }
+
+  retry() {
+    if (!this.armed || this.manualDisconnect) return;
+    if (this.trying) return;
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) return;
+    const url = this.ui.url.value.trim();
+    if (!url) return;
+    this.log('再接続 …','inf');
+    this.wsInit(url);
+  }
+
+  send(axes, buttons) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    this.ws.send(JSON.stringify({ id: this.padId, axes: axes, buttons: buttons }));
+  }
+
+  // ── Controller selection ────────────────────────────────────────────────
+  // Cards pick different pads by default (card #n takes the n-th detected
+  // pad), so two cards never publish the same stick unless asked to.
+  refreshPadList(pads) {
+    const sig = pads.map(function(p){ return p.index + ':' + p.id; }).join('|');
+    if (sig !== this.padListSig) {
+      this.padListSig = sig;
+      this.renderPadButtons(pads);
+      if (!pads.some((p) => p.index === this.padIndex)) {
+        const preferred = pads[this.index] || null;
+        this.selectPad(preferred ? preferred.index : -1, pads);
+      }
+      this.markSelectedPad();
+    }
+
+    const cur = pads.find((p) => p.index === this.padIndex) || null;
+    if (!cur && this.padConnected) {         // selected pad went away
+      this.rawAxes = []; this.rawButtons = [];
+      this.cancelBind();
+      this.renderWire([], []);
+    }
+    this.padConnected = !!cur;
+    if (cur) this.padId = cur.id;
+  }
+
+  renderPadButtons(pads) {
+    const box = this.ui.padBox;
+    box.textContent = '';
+    this.padButtons = [];
+    if (!pads.length) {
+      const span = document.createElement('span');
+      span.className = 'pad-none';
+      span.textContent = '(検出なし)';
+      box.appendChild(span);
+      return;
+    }
+    pads.forEach((p) => {
+      const b = document.createElement('button');
+      b.textContent = '[' + p.index + '] ' + p.id;
+      b.onclick = () => this.selectPad(p.index, connectedPads());
+      box.appendChild(b);
+      this.padButtons.push({ index: p.index, el: b });
+    });
+  }
+
+  markSelectedPad() {
+    this.padButtons.forEach((entry) => {
+      const cls = 'pad-btn' + (entry.index === this.padIndex ? ' selected' : '');
+      if (entry.el.className !== cls) entry.el.className = cls;
+    });
+  }
+
+  // Switching pads switches keymaps: a pad whose name is in the store gets
+  // its saved keymap applied, an unknown pad falls back to raw passthrough.
+  selectPad(index, pads) {
+    const list = pads || connectedPads();
+    const changed = (index !== this.padIndex);
+    this.padIndex = index;
+    this.cancelBind();
+    this.markSelectedPad();
+    const pad = list.find((p) => p.index === index) || null;
+    this.padConnected = !!pad;
+    this.padId = pad ? pad.id : 'unknown';
+    if (!changed || !pad) return;
+
+    this.note('コントローラ選択: ' + pad.id, 'ok');
+    const stored = storedKeymapFor(pad.id);
+    if (stored) {
+      this.applyKeymapData(stored);
+      this.note('キーマップ自動適用: ' + pad.id, 'ok');
+    } else if (this.keymap) {
+      this.keymap = null; this.keymapId = '';
+      this.setKeymapInfo(); this.renderSlots(); this.renderWire([], []);
+      this.note('保存済みキーマップなし: 生データを送信', 'inf');
+    }
+  }
+
+  // ── Keymap ──────────────────────────────────────────────────────────────
+  // The pad this keymap belongs to: the selected pad wins, so a file imported
+  // while a pad is in hand is adopted for that pad and auto-applies later.
+  currentPadKey() {
+    if (this.padConnected && this.padId) return this.padId;
+    return this.keymapId || '';
+  }
+
+  keymapFileObject() {
+    return {
+      version: 1,
+      gamepadId: this.currentPadKey(),
+      mapping: this.keymap || {},
+      exportedAt: new Date().toISOString()
+    };
+  }
+
+  persistKeymap() {
+    const key = this.currentPadKey();
+    if (!key) return;                   // nothing to key it by: memory only
+    if (!this.keymap) dropKeymapFor(key);
+    else storeKeymapFor(key, this.keymapFileObject());
+  }
+
+  setKeymapInfo() {
+    const none = !this.keymap;
+    const text = none
+      ? 'キーマップなし'
+      : (this.keymapId || 'Unknown') + '  ' + Object.keys(this.keymap).length
+        + '/' + ALL_SLOTS.length + ' 割り当て';
+    this.ui.kmInfos.forEach(function(el){
+      el.textContent = text;
+      el.className = 'km-info' + (none ? ' none' : '');
+    });
+  }
+
+  applyKeymapData(data) {
+    this.keymap = sanitizeMapping(data.mapping);
+    this.keymapId = (this.padConnected && this.padId)
+      ? this.padId                      // adopt for the pad in hand
+      : (typeof data.gamepadId === 'string' ? data.gamepadId : '');
+    this.cancelBind();
+    this.setKeymapInfo();
+    this.renderSlots();
+    this.renderWire([], []);
+  }
+
+  loadKeymapFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        if (typeof data !== 'object' || !data || typeof data.mapping !== 'object'
+            || data.mapping === null) {
+          throw new Error('mapping field missing');
+        }
+        this.applyKeymapData(data);
+        this.persistKeymap();
+        this.note('キーマップ読み込み: ' + (this.keymapId || 'Unknown')
+            + ' (' + Object.keys(this.keymap).length + ' 割り当て)', 'ok');
+      } catch(err) {
+        this.note('キーマップ読み込み失敗: ' + err.message, 'err');
+      }
+      event.target.value = '';
+    };
+    reader.readAsText(file);
+  }
+
+  exportKeymap() {
+    if (!this.keymap) { this.note('キーマップが未設定です', 'err'); return; }
+    const data = this.keymapFileObject();
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    const name = (data.gamepadId || 'untitled').replace(/[^a-zA-Z0-9_-]+/g,'_').slice(0,60)
+                 || 'untitled';
+    a.href = url;
+    a.download = 'gamepad-mapping-' + name + '.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 1000);
+    this.note('キーマップを保存: ' + a.download, 'ok');
+  }
+
+  clearKeymap() {
+    // Clearing also drops the saved entry for this pad, so it does not come
+    // back by auto-apply the next time the pad is selected.
+    const key = this.currentPadKey();
+    this.keymap = null;
+    if (key) dropKeymapFor(key);
+    this.keymapId = '';
+    this.cancelBind();
+    this.setKeymapInfo();
+    this.renderSlots();
+    this.renderWire([], []);
+    this.note('クリア: 割り当てを解除 (生データを送信)', 'inf');
+  }
+
+  // ── Modal ───────────────────────────────────────────────────────────────
+  openModal() {
+    this.ui.modal.hidden = false;
+    this.renderSlots();
+  }
+  closeModal() {
+    this.cancelBind();   // never leave a bind / sequence armed behind a closed modal
+    this.ui.modal.hidden = true;
+  }
+  get modalOpen() { return !this.ui.modal.hidden; }
+
+  // ── Binding UI ──────────────────────────────────────────────────────────
+  beginBind(slot) {
+    if (!this.padConnected) { this.note('ゲームパッドが未接続です', 'err'); return; }
+    if (!this.modalOpen) this.ui.modal.hidden = false;
+    this.bindSlot = slot;
+    // Snapshot the live pad state, not the last polled one: the reference for
+    // "what changed" (and a trigger's rest value) must be the instant the user
+    // started binding, not up to one poll interval earlier.
+    const gp = (navigator.getGamepads() || [])[this.padIndex];
+    this.prevButtons = gp ? gp.buttons.map(b => b.value) : [];
+    this.prevAxes = gp ? Array.from(gp.axes) : [];
+    this.bindStartAxes = this.prevAxes.slice();
+    this.updateBindBanner();
+    this.updateSlotStates();
+  }
+
+  cancelBind() {
+    const wasSequence = this.seqActive;
+    this.seqActive = false;
+    this.bindSlot = null;
+    this.updateBindBanner();
+    this.updateSlotStates();
+    if (wasSequence) this.note('順に割り当てを中断', 'inf');
+  }
+
+  updateBindBanner() {
+    if (!this.bindSlot) { this.ui.banner.hidden = true; return; }
+    this.ui.banner.hidden = false;
+    this.ui.bannerLabel.textContent = SLOT_LABEL[this.bindSlot] || this.bindSlot;
+    this.ui.bannerProg.textContent =
+        this.seqActive ? '(' + (this.seqIndex + 1) + ' / ' + SLOT_ORDER.length + ')' : '';
+    this.ui.bannerSkip.hidden = !this.seqActive;
+    this.ui.bannerCancel.textContent = this.seqActive ? '中断' : 'キャンセル';
+  }
+
+  // Walks SLOT_ORDER from the top: the slot waiting for input blinks,
+  // operating the matching input binds it and the next slot starts blinking.
+  startSequence() {
+    if (!this.padConnected) { this.note('ゲームパッドが未接続です', 'err'); return; }
+    this.seqActive = true;
+    this.seqIndex = 0;
+    this.note('順に割り当て開始', 'inf');
+    this.beginBind(SLOT_ORDER[0]);
+  }
+  advanceSequence() {
+    this.seqIndex += 1;
+    if (this.seqIndex >= SLOT_ORDER.length) {
+      this.seqActive = false;
+      this.bindSlot = null;
+      this.updateBindBanner();
+      this.updateSlotStates();
+      this.note('順に割り当て完了', 'ok');
+      return;
+    }
+    this.beginBind(SLOT_ORDER[this.seqIndex]);
+  }
+  skipSlot() {
+    if (!this.seqActive) { this.cancelBind(); return; }
+    const slot = SLOT_ORDER[this.seqIndex];
+    this.note((SLOT_LABEL[slot] || slot) + ' をスキップ', 'inf');
+    this.advanceSequence();
+  }
+
+  setBinding(slot, binding) {
+    if (!this.keymap) this.keymap = {};
+    this.keymap[slot] = binding;
+    if (!this.keymapId && this.padConnected) this.keymapId = this.padId;
+    this.bindSlot = null;
+    this.persistKeymap();
+    this.setKeymapInfo();
+    this.renderSlot(slot);
+    this.note((SLOT_LABEL[slot] || slot) + ' → ' + bindingText(binding), 'ok');
+    if (this.seqActive) this.advanceSequence();
+    else { this.updateBindBanner(); this.updateSlotStates(); }
+  }
+
+  clearSlot(slot) {
+    if (!this.keymap || !(slot in this.keymap)) return;
+    delete this.keymap[slot];
+    this.persistKeymap();
+    this.setKeymapInfo();
+    this.renderSlot(slot);
+    this.updateSlotStates();
+    this.note((SLOT_LABEL[slot] || slot) + ' をクリア', 'inf');
+  }
+
+  toggleInvert(slot) {
+    if (!this.keymap) return;
+    const b = this.keymap[slot];
+    if (!b) return;
+    if (b.kind === 'axis') b.invert = !b.invert;
+    else if (b.kind === 'axis_dir') b.positive = !b.positive;
+    else return;
+    this.persistKeymap();
+    this.renderSlot(slot);
+  }
+
+  onSlotClick(slot, ev) {
+    if (ev.shiftKey) { this.clearSlot(slot); return; }
+    if (this.bindSlot === slot) { this.cancelBind(); return; }
+    if (this.seqActive) this.seqIndex = SLOT_ORDER.indexOf(slot);   // resume here
+    this.beginBind(slot);
+  }
+
+  // ── Slot rendering (built as nodes: no ids, no markup strings) ──────────
+  renderSlots() {
+    const grid = this.ui.slotGrid;
+    grid.textContent = '';
+    this.slotEls.clear();
+    SLOT_ORDER.forEach((slot) => {
+      const root = document.createElement('div');
+      root.className = 'slot';
+
+      const body = document.createElement('div');
+      body.className = 'body';
+      body.onclick = (ev) => this.onSlotClick(slot, ev);
+      const name = document.createElement('div');
+      name.className = 'name';
+      name.textContent = SLOT_LABEL[slot] || slot;
+      const bind = document.createElement('div');
+      bind.className = 'bind';
+      body.appendChild(name);
+      body.appendChild(bind);
+
+      const inv = document.createElement('button');
+      inv.className = 'inv';
+      inv.title = '符号を反転';
+      inv.textContent = '±';
+      inv.onclick = () => this.toggleInvert(slot);
+
+      const val = document.createElement('div');
+      val.className = 'val';
+      val.textContent = '0.00';
+
+      root.appendChild(body);
+      root.appendChild(inv);
+      root.appendChild(val);
+      grid.appendChild(root);
+
+      this.slotEls.set(slot, { root, bind, val, inv });
+      this.renderSlot(slot);
+    });
+    this.updateSlotStates();
+  }
+
+  renderSlot(slot) {
+    const els = this.slotEls.get(slot);
+    if (!els) return;
+    const b = this.keymap ? this.keymap[slot] : null;
+    const invertable = !!b && (b.kind === 'axis' || b.kind === 'axis_dir');
+    const inverted = !!b && (b.kind === 'axis' ? !!b.invert
+                          : b.kind === 'axis_dir' ? !b.positive : false);
+    els.bind.textContent = bindingText(b);
+    els.inv.hidden = !invertable;
+    els.inv.className = 'inv' + (inverted ? ' on' : '');
+  }
+
+  updateSlotStates() {
+    this.slotEls.forEach((els, slot) => {
+      const b = this.keymap ? this.keymap[slot] : null;
+      const v = evalBinding(b, this.rawButtons, this.rawAxes);
+      els.val.textContent = v.toFixed(2);
+      let cls = 'slot';
+      if (this.bindSlot === slot) cls += ' binding';
+      else if (!b) cls += ' unbound';
+      else if (Math.abs(v) > PRESS_THRESHOLD) cls += ' active';
+      // Only touch className when it actually changes: rewriting it every
+      // poll would restart the blink animation of the slot being bound.
+      if (els.root.className !== cls) els.root.className = cls;
+    });
+  }
+
+  // ── Binding detection (same rules as g2e) ───────────────────────────────
+  pollBinding(rawButtons, rawAxes) {
+    const slot = this.bindSlot;
+    if (!slot) { this.prevButtons = rawButtons; this.prevAxes = rawAxes; return; }
+
+    const pressed = () => {
+      for (let i = 0; i < rawButtons.length; i++) {
+        if ((this.prevButtons[i] ?? 0) < PRESS_THRESHOLD
+            && rawButtons[i] >= PRESS_THRESHOLD) {
+          return i;
+        }
+      }
+      return -1;
+    };
+    const movedAxis = () => {
+      for (let i = 0; i < rawAxes.length; i++) {
+        if (Math.abs(this.prevAxes[i] ?? 0) < PRESS_THRESHOLD
+            && Math.abs(rawAxes[i]) >= PRESS_THRESHOLD) {
+          return i;
+        }
+      }
+      return -1;
+    };
+
+    if (TRIGGER_SLOTS.includes(slot)) {
+      // Triggers accept a digital button, or an axis that travels far enough
+      // from where it rested when binding started (rest → full).
+      const bi = pressed();
+      if (bi >= 0) { this.setBinding(slot, {kind:'button', index:bi}); }
+      else {
+        for (let i = 0; i < rawAxes.length; i++) {
+          const rest = this.bindStartAxes[i] ?? 0;
+          if (Math.abs(rawAxes[i] - rest) >= TRIGGER_DELTA) {
+            this.setBinding(slot, {kind:'axis_trigger', index:i, rest:rest,
+                                   full: rawAxes[i] > rest ? 1 : -1});
+            break;
+          }
+        }
+      }
+    } else if (!AXIS_SLOTS.includes(slot)) {
+      // Button slot: a button press, or one direction of an axis.
+      const bi = pressed();
+      if (bi >= 0) { this.setBinding(slot, {kind:'button', index:bi}); }
+      else {
+        const ai = movedAxis();
+        if (ai >= 0) {
+          this.setBinding(slot, {kind:'axis_dir', index:ai, positive: rawAxes[ai] > 0,
+                                 threshold: AXIS_DIR_THRESHOLD});
+        }
+      }
+    } else {
+      // Axis slot: only an axis can be bound.
+      const ai = movedAxis();
+      if (ai >= 0) { this.setBinding(slot, {kind:'axis', index:ai}); }
+    }
+
+    this.prevButtons = rawButtons;
+    this.prevAxes = rawAxes;
+  }
+
+  // ── Mapping ─────────────────────────────────────────────────────────────
+  applyMapping(rawAxes, rawButtons) {
+    if (!this.keymap) {
+      return { axes: rawAxes.slice(), buttons: rawButtons.slice() };
+    }
+    const buttons = STD_BUTTONS.map((name) =>
+        evalBinding(this.keymap[name], rawButtons, rawAxes));
+    const axes = STD_AXES.map((name) =>
+        evalBinding(this.keymap[name], rawButtons, rawAxes));
+    return { axes, buttons };
+  }
+
+  // ── Current values ──────────────────────────────────────────────────────
+  renderWire(axes, buttons) {
+    setWireLine(this.ui.wireAxes, 'Axes', Array.from(axes || []), true);
+    setWireLine(this.ui.wireButtons, 'Buttons', Array.from(buttons || []), false);
+  }
+
+  // ── Per-tick work ───────────────────────────────────────────────────────
+  tick(pads) {
+    this.refreshPadList(pads);
+    if (!this.padConnected) return;
+    const gp = pads.find((p) => p.index === this.padIndex);
+    if (!gp) return;
+
+    const rawAxes = Array.from(gp.axes);
+    const rawButtons = gp.buttons.map((b) => b.value);
+    this.rawAxes = rawAxes;
+    this.rawButtons = rawButtons;
+
+    this.pollBinding(rawButtons, rawAxes);
+
+    const { axes, buttons } = this.applyMapping(rawAxes, rawButtons);
+    this.renderWire(axes, buttons);
+    if (this.modalOpen) this.updateSlotStates();
+    this.send(axes, buttons);
+  }
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+const CARD_COUNT = requestedCardCount();
+const cardsBox = document.getElementById('cards');
+if (CARD_COUNT === 1) cardsBox.classList.add('single');
+
+const cards = [];
+for (let i = 0; i < CARD_COUNT; i++) {
+  const card = new JoyCard(i, CARD_COUNT);
+  cards.push(card);
+  cardsBox.appendChild(card.el);
+}
+
+// Auto-connect only where the target is unambiguous: the classic single-card
+// page, or a card given its own URL via ?ws=. Otherwise every card would open
+// a client against the same node and they would fight over /joy.
+cards.forEach(function(card){
+  if (CARD_COUNT === 1 || explicitWsUrl(card.index)) card.connect();
+});
+
+window.addEventListener('gamepadconnected', function(e){
+  notify('コントローラ接続: ' + e.gamepad.id, 'ok');
+  const pads = connectedPads();
+  cards.forEach(function(card){ card.refreshPadList(pads); });
+});
+window.addEventListener('gamepaddisconnected', function(e){
+  notify('コントローラ切断: ' + e.gamepad.id, 'err');
+  const pads = connectedPads();
+  cards.forEach(function(card){ card.refreshPadList(pads); });
+});
+window.addEventListener('keydown', function(ev){
+  if (ev.key !== 'Escape') return;
+  cards.forEach(function(card){ if (card.modalOpen) card.closeModal(); });
+});
+
+// One timer drives every card, so all cards see the same gamepad frame.
+setInterval(function(){
+  const pads = connectedPads();
+  cards.forEach(function(card){ card.tick(pads); });
+}, POLL_MS);
+setInterval(function(){
+  cards.forEach(function(card){ card.retry(); });
+}, RETRY_MS);
+</script>
+</body>
+</html>
