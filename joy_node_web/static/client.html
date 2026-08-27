@@ -114,14 +114,11 @@
                   gap: 12px; margin-bottom: 14px; }
     .modal-title { font-size: 18px; margin: 0; }
 
-    /* ── Live values (wire dump) ──────────────────────────────────────── */
-    .wire { margin-bottom: 16px; }
-    .wire-head { font-size: 14px; color: var(--muted); font-weight: bold;
-                 margin-bottom: 4px; }
+    /* ── Live values ──────────────────────────────────────────────────── */
     .wire-body { margin: 0; padding: 10px 12px; background: var(--panel);
                  border: 1px solid var(--line); font-size: 13px;
-                 font-family: monospace; font-weight: normal; line-height: 1.6;
-                 white-space: pre; overflow-x: auto; }
+                 font-family: monospace; font-weight: normal; line-height: 1.7; }
+    .wire-line { white-space: pre-wrap; word-break: break-word; }
     .pad-btns { display: flex; flex-wrap: wrap; gap: 8px; }
     .pad-btns button { margin: 0; font-size: 14px; padding: 6px 12px; }
     .pad-btns button.selected { background: var(--accent); color: #fff;
@@ -159,14 +156,10 @@
     </div>
 
     <div class="card-block">
-      <h2>送信中の値</h2>
-      <div class="wire">
-        <div class="wire-head" id="wire-axes-head">axes</div>
-        <pre class="wire-body" id="wire-axes">-</pre>
-      </div>
-      <div class="wire">
-        <div class="wire-head" id="wire-buttons-head">buttons</div>
-        <pre class="wire-body" id="wire-buttons">-</pre>
+      <h2>現在値</h2>
+      <div class="wire-body">
+        <div class="wire-line" id="wire-axes">Axes:</div>
+        <div class="wire-line" id="wire-buttons">Buttons:</div>
       </div>
     </div>
 
@@ -936,32 +929,22 @@ function updateGamepad() {
 }
 
 // ── Display ───────────────────────────────────────────────────────────────
-// The values actually put on the wire, as the index / value sequence that
-// /joy carries: axes as floats, buttons as sent (int, or the fractional
-// value of an axis mapped onto a button).
-// axes are always shown as floats; buttons as ints unless an axis mapped onto
-// a button makes them fractional.
+// The values currently going out on /joy, as a single comma separated line
+// each: axes as floats, buttons as sent (int, or the fractional value of an
+// axis mapped onto a button).
 function formatWireValue(v, asFloat) {
   const n = parseFloat(v) || 0;
   if (asFloat || !Number.isInteger(n)) return n.toFixed(3);
   return String(n);
 }
 
-function formatWire(values, asFloat) {
-  if (!values.length) return '(なし)';
-  const cells = values.map(function(v){ return formatWireValue(v, asFloat); });
-  const w = Math.max(3, ...cells.map(function(c){ return c.length; }));
-  const idx = values.map(function(_, i){ return String(i).padStart(w, ' '); });
-  return idx.join(' ') + '\n' + cells.map(function(c){ return c.padStart(w, ' '); }).join(' ');
-}
-
-function renderWire(name, values, asFloat) {
-  const head = document.getElementById('wire-' + name + '-head');
-  const body = document.getElementById('wire-' + name);
-  const title = name + ' [' + values.length + ']';
-  const text = formatWire(values, asFloat);
-  if (head.textContent !== title) head.textContent = title;
-  if (body.textContent !== text) body.textContent = text;
+function renderWire(name, label, values, asFloat) {
+  const el = document.getElementById('wire-' + name);
+  const body = values.length
+    ? values.map(function(v){ return formatWireValue(v, asFloat); }).join(', ')
+    : '-';
+  const text = label + ': ' + body;
+  if (el.textContent !== text) el.textContent = text;
 }
 
 function rebuildDisplay(axes, buttons) {
@@ -969,8 +952,8 @@ function rebuildDisplay(axes, buttons) {
 }
 
 function updateDisplay(axes, buttons, fromCan) {
-  renderWire('axes', Array.from(axes || []), true);
-  renderWire('buttons', Array.from(buttons || []), false);
+  renderWire('axes', 'Axes', Array.from(axes || []), true);
+  renderWire('buttons', 'Buttons', Array.from(buttons || []), false);
 }
 
 // ── Startup ───────────────────────────────────────────────────────────────
