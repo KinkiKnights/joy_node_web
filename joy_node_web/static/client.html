@@ -7,23 +7,36 @@
   <style>
     :root {
       color-scheme: light;
-      --bg: #f3f4f6; --fg: #1f2124; --panel: #ffffff; --line: #c9ccd1;
-      --accent: #1667c8; --ok: #1a7f37; --warn: #b26a00; --err: #c62828;
-      --muted: #6b7076;
+      /* KINKI KNIGHTS colours (kinkiknights.com) */
+      --bg: #f2f8fb;          /* light blue tinted ground */
+      --panel: #ffffff;
+      --fg: #1d242b;
+      --muted: #5b6770;
+      --line: #dde3e8;
+      --accent: #15719c;      /* primary blue */
+      --accent-strong: #115a7d;
+      --accent-bright: #47b9e6;
+      --accent-soft: rgba(21,113,156,0.08);
+      --ok: #1a7f37; --warn: #b26a00; --err: #c62828;
     }
     * { box-sizing: border-box; }
     body { margin: 0; background: var(--bg); color: var(--fg);
+           font-family: "Noto Sans JP", 游ゴシック体, YuGothic, 游ゴシック,
+                        -apple-system, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
            font-weight: bold; font-size: 18px; }
 
     /* ── Header ───────────────────────────────────────────────────────── */
     header.app-header {
       display: flex; align-items: center; justify-content: space-between;
       gap: 16px; flex-wrap: wrap;
-      padding: 14px 24px; background: #e7e9ed;
-      border-bottom: 2px solid var(--line);
+      padding: 14px 24px; background: rgba(255,255,255,0.96);
+      border-bottom: 1px solid var(--line);
       position: sticky; top: 0; z-index: 10;
     }
-    .app-title { font-size: 22px; letter-spacing: 0.04em; margin: 0; }
+    .app-title { font-size: 22px; font-weight: 900; letter-spacing: 0.04em; margin: 0; }
+    .powered { font-size: 13px; font-weight: bold; color: var(--muted);
+               letter-spacing: 0.04em; }
+    .powered .brand { color: var(--accent); font-weight: 900; letter-spacing: 0.08em; }
     .conn-lamp { display: inline-flex; align-items: center; gap: 8px;
                  min-width: 108px; }
     .conn-state { font-size: 15px; }
@@ -41,9 +54,10 @@
     .km-label { font-size: 15px; color: var(--muted); margin-right: 2px; }
 
     input[type=text], select { background: var(--panel); color: var(--fg);
-                               border: 1px solid var(--line);
+                               border: 1px solid var(--line); border-radius: 4px;
                                padding: 6px 10px; font-size: 16px; }
-    input[type=text]:disabled { background: #eceef1; color: var(--muted); }
+    input[type=text]:focus { outline: none; border-color: var(--accent-bright); }
+    input[type=text]:disabled { background: var(--bg); color: var(--muted); }
     select { font-weight: bold; max-width: 100%; }
 
     /* ── Cards ────────────────────────────────────────────────────────── */
@@ -52,27 +66,31 @@
     .cards { display: grid; gap: 20px;
              grid-template-columns: repeat(auto-fit, minmax(430px, 1fr)); }
     .cards.single { grid-template-columns: minmax(0, 1100px); }
-    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
-            padding: 16px 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+            padding: 18px 20px; box-shadow: 0 2px 10px rgba(29,36,43,0.06);
             min-width: 0; }
     .card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
-    .card-no { font-size: 18px; color: var(--accent); }
+    .card-no { font-size: 18px; font-weight: 900; color: var(--accent); }
     .card-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .card-row input[type=text] { flex: 0 1 300px; min-width: 160px; font-size: 15px; }
     .card-row button { padding: 6px 14px; }
     .log-row { display: flex; align-items: center; gap: 10px; margin-top: 14px;
-               background: #f7f8fa; border: 1px solid var(--line); padding: 8px 10px; }
+               background: var(--bg); border: 1px solid var(--line);
+               border-radius: 4px; padding: 8px 10px; }
     .log-line { font-size: 13px; font-weight: normal; font-family: monospace;
                 color: var(--fg); white-space: nowrap; overflow: hidden;
                 text-overflow: ellipsis; }
     .log-line.ok { color: var(--ok); }
     .log-line.err { color: var(--err); }
-    button { background: #e8eaee; color: var(--fg); border: 1px solid #b3b7be;
-             padding: 6px 16px; cursor: pointer; font-size: 16px;
+    button { background: #eef4f8; color: var(--fg); border: 1px solid var(--line);
+             border-radius: 4px; padding: 6px 16px; cursor: pointer; font-size: 16px;
              font-weight: bold; margin-right: 8px; }
-    button:hover { background: #d8dbe1; }
+    button:hover { background: #e0ebf2; }
+    /* the site's call-to-action look, kept to the primary actions only */
+    .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .btn-primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
     .dot { display: inline-block; width: 14px; height: 14px; border-radius: 50%;
-           background: #b3b7be; }
+           background: #c3ccd3; }
     .dot.connected { background: var(--ok); }
     .dot.connecting { background: var(--warn); }
     .dot.error { background: var(--err); }
@@ -85,22 +103,23 @@
     .km-info.none { color: var(--muted); }
     .bind-banner { display: flex; align-items: center; justify-content: space-between;
                    gap: 12px; margin-top: 12px; padding: 8px 12px; font-size: 15px;
-                   border: 1px solid var(--accent); background: rgba(22,103,200,0.07); }
+                   border: 1px solid var(--accent); background: var(--accent-soft);
+                   border-radius: 4px; }
     .bind-banner[hidden] { display: none; }
     .slot-grid { display: grid; gap: 8px; margin-top: 12px;
                  grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); }
-    .slot { border: 1px solid var(--line); background: var(--panel); padding: 8px 10px;
-            display: flex; align-items: center; gap: 8px; }
+    .slot { border: 1px solid var(--line); background: var(--panel); border-radius: 4px;
+            padding: 8px 10px; display: flex; align-items: center; gap: 8px; }
     .slot .body { flex: 1; cursor: pointer; min-width: 0; }
     .slot .name { font-size: 15px; }
     .slot .bind { font-size: 13px; font-family: monospace; font-weight: normal;
                   color: var(--muted); }
-    .slot.unbound { border-style: dashed; border-color: #d3a3a3; }
-    .slot.active { border-color: var(--accent); background: rgba(22,103,200,0.08); }
+    .slot.unbound { border-style: dashed; border-color: #c9b1b1; }
+    .slot.active { border-color: var(--accent-bright); background: var(--accent-soft); }
     .slot.binding { border: 2px solid var(--accent);
                     animation: slot-blink 0.8s steps(1, end) infinite; }
     @keyframes slot-blink {
-      0%,   49% { border-color: var(--accent); background: rgba(22,103,200,0.16); }
+      0%,   49% { border-color: var(--accent); background: rgba(71,185,230,0.22); }
       50%, 100% { border-color: var(--line); background: var(--panel); }
     }
     .bind-progress { color: var(--muted); font-weight: normal; margin-left: 8px; }
@@ -108,36 +127,39 @@
                  color: var(--muted); min-width: 44px; text-align: right; }
     .slot .inv { padding: 2px 7px; margin: 0; font-size: 12px; }
     .slot .inv.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .card-block h2 { color: var(--muted); }
 
     /* ── Modal ────────────────────────────────────────────────────────── */
-    .modal-backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(31,33,36,0.38);
+    .modal-backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(29,36,43,0.38);
                       display: flex; align-items: flex-start; justify-content: center;
                       padding: 40px 16px; overflow-y: auto; }
     .modal-backdrop[hidden] { display: none; }
     .modal { width: 100%; max-width: 1040px; background: var(--panel);
-             border: 1px solid var(--line); border-radius: 6px;
-             box-shadow: 0 6px 24px rgba(0,0,0,0.20); padding: 18px 22px 24px; }
+             border: 1px solid var(--line); border-radius: 10px;
+             box-shadow: 0 10px 30px rgba(29,36,43,0.22); padding: 18px 22px 24px; }
     .modal-head { display: flex; align-items: center; justify-content: space-between;
                   gap: 12px; margin-bottom: 14px; }
-    .modal-title { font-size: 18px; margin: 0; }
+    .modal-title { font-size: 18px; font-weight: 900; margin: 0; }
     .modal-title .km-info { margin-left: 8px; }
-    .modal-no { color: var(--accent); margin-right: 8px; }
+    .modal-no { color: var(--accent); font-weight: 900; margin-right: 8px; }
 
     /* ── Live values ──────────────────────────────────────────────────── */
-    .wire-body { margin: 0; padding: 10px 12px; background: var(--panel);
-                 border: 1px solid var(--line); font-size: 13px;
+    .wire-body { margin: 0; padding: 10px 12px; background: var(--bg);
+                 border: 1px solid var(--line); border-radius: 4px; font-size: 13px;
                  font-family: monospace; font-weight: normal; line-height: 1.7; }
     .wire-line { white-space: pre-wrap; word-break: break-word; }
     .pad-btns { display: flex; flex-wrap: wrap; gap: 8px; }
     .pad-btns button { margin: 0; font-size: 14px; padding: 6px 12px; }
     .pad-btns button.selected { background: var(--accent); color: #fff;
                                 border-color: var(--accent); }
+    .pad-btns button.selected:hover { background: var(--accent-strong); }
     .pad-none { font-size: 14px; font-weight: normal; color: var(--muted); }
   </style>
 </head>
 <body>
   <header class="app-header">
     <h1 class="app-title">JoyNodeWeb</h1>
+    <span class="powered">Powered by <span class="brand">KINKI KNIGHTS</span></span>
   </header>
 
 <main>
@@ -160,7 +182,7 @@
           <span class="conn-state">未接続</span>
         </span>
         <input type="text" class="ws-url" placeholder="ws://hostname/joys">
-        <button class="btn-connect">接続</button>
+        <button class="btn-connect btn-primary">接続</button>
         <button class="btn-disconnect" hidden>切断</button>
       </div>
       <div class="log-row">
@@ -185,7 +207,7 @@
       <span class="km-label">キーマップ</span>
       <span class="km-info none">キーマップなし</span>
       <div class="km-actions">
-        <button class="btn-km">設定変更</button>
+        <button class="btn-km btn-primary">設定変更</button>
       </div>
     </div>
 
@@ -196,7 +218,7 @@
           <button class="btn-modal-close">閉じる</button>
         </div>
         <div class="km-toolbar">
-          <button class="btn-seq">割当開始</button>
+          <button class="btn-seq btn-primary">割当開始</button>
           <button class="btn-clear">クリア</button>
           <button class="btn-import">インポート</button>
           <button class="btn-export">エクスポート</button>
