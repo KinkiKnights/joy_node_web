@@ -24,10 +24,9 @@
       position: sticky; top: 0; z-index: 10;
     }
     .app-title { font-size: 22px; letter-spacing: 0.04em; margin: 0; }
-    .conn-info { margin-left: auto; text-align: right; line-height: 1.35; }
-    .conn-state { font-size: 14px; color: var(--muted); }
-    .conn-target { font-size: 15px; font-family: monospace; font-weight: normal;
-                   color: var(--accent); word-break: break-all; }
+    .conn-lamp { display: inline-flex; align-items: center; gap: 8px;
+                 min-width: 108px; }
+    .conn-state { font-size: 15px; }
 
     main { padding: 20px 24px 40px; }
     .card-block { margin-bottom: 24px; }
@@ -52,7 +51,8 @@
             padding: 16px 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
     .card { max-width: 1100px; }
     .card-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .card-row input[type=text] { flex: 1 1 260px; min-width: 200px; }
+    .card-row input[type=text] { flex: 0 1 300px; min-width: 160px; font-size: 15px; }
+    .card-row button { padding: 6px 14px; }
     .log-row { display: flex; align-items: center; gap: 10px; margin-top: 14px;
                background: #f7f8fa; border: 1px solid var(--line); padding: 8px 10px; }
     .log-line { font-size: 13px; font-weight: normal; font-family: monospace;
@@ -113,6 +113,7 @@
     .modal-head { display: flex; align-items: center; justify-content: space-between;
                   gap: 12px; margin-bottom: 14px; }
     .modal-title { font-size: 18px; margin: 0; }
+    .modal-title .km-info { margin-left: 8px; }
 
     /* ── Live values ──────────────────────────────────────────────────── */
     .wire-body { margin: 0; padding: 10px 12px; background: var(--panel);
@@ -129,10 +130,7 @@
 <body>
   <header class="app-header">
     <h1 class="app-title">JoyNodeWeb</h1>
-    <div class="conn-info">
-      <div class="conn-state" id="conn-state">未接続</div>
-      <div class="conn-target" id="conn-target">-</div>
-    </div>
+
   </header>
 
 <main>
@@ -140,12 +138,15 @@
     <div class="card-block">
       <h2>接続</h2>
       <div class="card-row">
+        <span class="conn-lamp">
+          <span class="dot" id="dot"></span>
+          <span class="conn-state" id="conn-state">未接続</span>
+        </span>
         <input type="text" id="ws-url" placeholder="ws://hostname/joys">
         <button id="btn-connect" onclick="doConnect()">接続</button>
         <button id="btn-disconnect" onclick="doDisconnect()" hidden>切断</button>
       </div>
       <div class="log-row">
-        <span class="dot" id="dot"></span>
         <span class="log-line" id="log-line">-</span>
       </div>
     </div>
@@ -168,12 +169,8 @@
       <span class="km-info none" id="km-info">キーマップなし</span>
       <div class="km-actions">
         <button onclick="openKeymapModal()">設定変更</button>
-        <button onclick="importKeymap()">インポート</button>
-        <button onclick="clearKeymap()">リセット</button>
       </div>
     </div>
-    <input type="file" id="km-file" accept="application/json,.json" style="display:none"
-           onchange="loadKeymapFile(event)">
   </div>
 </main>
 
@@ -185,7 +182,8 @@
     </div>
     <div class="km-toolbar">
       <button onclick="startSequence()">割当開始</button>
-      <button onclick="clearAllSlots()">クリア</button>
+      <button onclick="clearKeymap()">クリア</button>
+      <button onclick="importKeymap()">インポート</button>
       <button onclick="saveKeymap()">エクスポート</button>
     </div>
     <div class="bind-banner" id="bind-banner" hidden>
@@ -196,6 +194,8 @@
       </span>
     </div>
     <div class="slot-grid" id="slot-grid"></div>
+    <input type="file" id="km-file" accept="application/json,.json" style="display:none"
+           onchange="loadKeymapFile(event)">
   </div>
 </div>
 
@@ -275,17 +275,22 @@ let   seqIndex  = 0;     // position in SLOT_ORDER while seqActive
 let   prevButtons = [], prevAxes = [], bindStartAxes = [];
 
 // ── Logging ───────────────────────────────────────────────────────────────
-// Only the latest line is shown; the lamp next to it carries the connection
-// state. textContent, not innerHTML: messages can carry a gamepad id.
+// The log line carries WebSocket connection events only, latest line first.
+// textContent, not innerHTML: messages can carry a URL.
 function log(msg, cls) {
   const el  = document.getElementById('log-line');
   const now = new Date().toTimeString().slice(0,8);
   el.className = 'log-line' + (cls && cls !== 'inf' ? ' ' + cls : '');
   el.textContent = now + '  ' + msg;
 }
-function setDot(s){ document.getElementById('dot').className='dot '+s; }
+// Everything that is not a connection event (keymap, controller, binding):
+// console only, so the log line stays a connection log.
+function notify(msg, cls) {
+  if (cls === 'err') console.warn('[joy] ' + msg);
+  else console.log('[joy] ' + msg);
+}
+function setDot(s){ document.getElementById('dot').className = 'dot' + (s ? ' ' + s : ''); }
 function setConnState(text){ document.getElementById('conn-state').textContent = text; }
-function setConnTarget(url){ document.getElementById('conn-target').textContent = url || '-'; }
 
 // ── Server config ─────────────────────────────────────────────────────────
 // Injected by the delivery server (joy_node_web.client). Empty when this
@@ -317,17 +322,20 @@ function defaultWsUrl() {
 
 const defaultUrl = defaultWsUrl();
 document.getElementById('ws-url').value = defaultUrl;
-setConnTarget(defaultUrl);
-document.getElementById('ws-url').addEventListener('input', function(){
-  setConnTarget(this.value.trim());
-});
 
-// The card shows 接続 while down and 切断 while up, so the two never coexist.
+// connected / connecting / failed / idle → lamp, label, and which button shows
+// (接続 while down, 切断 while up, so the two never coexist).
+const CONN_STATES = {
+  connected:  { dot: 'connected',  text: '接続済' },
+  connecting: { dot: 'connecting', text: '接続中...' },
+  failed:     { dot: 'error',      text: '接続失敗' },
+  idle:       { dot: '',           text: '未接続' }
+};
+
 function setConnUi(state) {
-  setDot(state === 'connected' ? 'connected'
-       : state === 'connecting' ? 'connecting' : 'error');
-  setConnState(state === 'connected' ? '接続済'
-             : state === 'connecting' ? '接続中' : '切断');
+  const s = CONN_STATES[state] || CONN_STATES.idle;
+  setDot(s.dot);
+  setConnState(s.text);
   document.getElementById('btn-connect').hidden = (state === 'connected');
   document.getElementById('btn-disconnect').hidden = (state !== 'connected');
   document.getElementById('ws-url').disabled = (state === 'connected');
@@ -344,18 +352,19 @@ function doDisconnect() {
   if (status.ws){ status.ws.onclose=null; status.ws.close(); status.ws=null; }
   status.trying=false;
   status.manual_disconnect = true;    // stay down until 接続 is pressed
-  setConnUi('closed');
+  setConnUi('idle');
   log('切断しました','err');
 }
 function wsInit(url) {
   if (status.trying) return;
-  status.trying=true; setConnUi('connecting'); setConnTarget(url);
+  status.trying=true; setConnUi('connecting');
   log('接続中 '+url+' …','inf');
   const ws = new WebSocket(url);
   ws.onopen  = ()=>{ status.ws=ws; status.trying=false; setConnUi('connected');
                      log('接続: '+url,'ok'); };
-  ws.onclose = ()=>{ status.ws=null; status.trying=false; setConnUi('closed');
-                     log('切断','err'); };
+  ws.onclose = ()=>{ status.ws=null; status.trying=false;
+                     setConnUi(status.manual_disconnect ? 'idle' : 'failed');
+                     log(status.manual_disconnect ? '切断' : '接続失敗','err'); };
   ws.onerror = ()=>{ log('WebSocket エラー','err'); };
   ws.onmessage = (e)=>{
     try{ const d=JSON.parse(e.data); if(d.source==='can') updateDisplay(d.axes,d.buttons,true); }catch(_){}
@@ -535,10 +544,10 @@ function loadKeymapFile(event) {
       }
       applyKeymapData(data);
       persistKeymap();
-      log('キーマップ読み込み: ' + (keymapId || 'Unknown')
+      notify('キーマップ読み込み: ' + (keymapId || 'Unknown')
           + ' (' + Object.keys(keymap).length + ' 割り当て)', 'ok');
     } catch(err) {
-      log('キーマップ読み込み失敗: ' + err.message, 'err');
+      notify('キーマップ読み込み失敗: ' + err.message, 'err');
     }
     event.target.value = '';
   };
@@ -546,7 +555,7 @@ function loadKeymapFile(event) {
 }
 
 function saveKeymap() {
-  if (!keymap) { log('キーマップが未設定です', 'err'); return; }
+  if (!keymap) { notify('キーマップが未設定です', 'err'); return; }
   const data = keymapFileObject();
   const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
   const url  = URL.createObjectURL(blob);
@@ -559,15 +568,9 @@ function saveKeymap() {
   a.click();
   a.remove();
   setTimeout(()=>URL.revokeObjectURL(url), 1000);
-  log('キーマップを保存: ' + a.download, 'ok');
+  notify('キーマップを保存: ' + a.download, 'ok');
 }
 
-function clearAllSlots() {
-  keymap = {};
-  if (status.pad_connect) keymapId = pad_info.id;
-  cancelBind(); persistKeymap(); setKeymapInfo(); renderSlots(); rebuildDisplay([], []);
-  log('全スロットをクリア', 'inf');
-}
 function clearKeymap() {
   // Reset also drops the saved entry for this pad, so it does not come back
   // by auto-apply the next time the pad is selected.
@@ -580,7 +583,7 @@ function clearKeymap() {
   }
   keymapId = '';
   cancelBind(); setKeymapInfo(); renderSlots(); rebuildDisplay([], []);
-  log('リセット: 割り当てを解除 (生データを送信)', 'inf');
+  notify('クリア: 割り当てを解除 (生データを送信)', 'inf');
 }
 
 // ── Keymap modal ──────────────────────────────────────────────────────────
@@ -606,7 +609,7 @@ window.addEventListener('keydown', function(ev){
 
 // ── Binding UI ────────────────────────────────────────────────────────────
 function beginBind(slot) {
-  if (!status.pad_connect) { log('ゲームパッドが未接続です', 'err'); return; }
+  if (!status.pad_connect) { notify('ゲームパッドが未接続です', 'err'); return; }
   if (kmModal().hidden) kmModal().hidden = false;
   bindSlot = slot;
   // Snapshot the live pad state, not the last polled one: the reference for
@@ -625,7 +628,7 @@ function cancelBind() {
   bindSlot = null;
   updateBindBanner();
   renderSlots();
-  if (wasSequence) log('順に割り当てを中断', 'inf');
+  if (wasSequence) notify('順に割り当てを中断', 'inf');
 }
 
 function updateBindBanner() {
@@ -643,10 +646,10 @@ function updateBindBanner() {
 // Walks SLOT_ORDER from the top: the slot waiting for input blinks, operating
 // the matching input binds it and the next slot starts blinking.
 function startSequence() {
-  if (!status.pad_connect) { log('ゲームパッドが未接続です', 'err'); return; }
+  if (!status.pad_connect) { notify('ゲームパッドが未接続です', 'err'); return; }
   seqActive = true;
   seqIndex = 0;
-  log('順に割り当て開始: 点滅中のスロットに対応する入力を操作してください', 'inf');
+  notify('順に割り当て開始', 'inf');
   beginBind(SLOT_ORDER[0]);
 }
 function advanceSequence() {
@@ -656,7 +659,7 @@ function advanceSequence() {
     bindSlot = null;
     updateBindBanner();
     renderSlots();
-    log('順に割り当て完了', 'ok');
+    notify('順に割り当て完了', 'ok');
     return;
   }
   beginBind(SLOT_ORDER[seqIndex]);
@@ -664,7 +667,7 @@ function advanceSequence() {
 function skipSlot() {
   if (!seqActive) { cancelBind(); return; }
   const slot = SLOT_ORDER[seqIndex];
-  log((SLOT_LABEL[slot] || slot) + ' をスキップ', 'inf');
+  notify((SLOT_LABEL[slot] || slot) + ' をスキップ', 'inf');
   advanceSequence();
 }
 function setBinding(slot, binding) {
@@ -673,7 +676,7 @@ function setBinding(slot, binding) {
   if (!keymapId && status.pad_connect) keymapId = pad_info.id;
   bindSlot = null;
   persistKeymap(); setKeymapInfo(); rebuildDisplay([], []);
-  log((SLOT_LABEL[slot] || slot) + ' → ' + bindingText(binding), 'ok');
+  notify((SLOT_LABEL[slot] || slot) + ' → ' + bindingText(binding), 'ok');
   if (seqActive) advanceSequence();
   else { updateBindBanner(); renderSlots(); }
 }
@@ -681,7 +684,7 @@ function clearSlot(slot) {
   if (!keymap || !(slot in keymap)) return;
   delete keymap[slot];
   persistKeymap(); setKeymapInfo(); renderSlots(); rebuildDisplay([], []);
-  log((SLOT_LABEL[slot] || slot) + ' をクリア', 'inf');
+  notify((SLOT_LABEL[slot] || slot) + ' をクリア', 'inf');
 }
 function toggleInvert(slot) {
   if (!keymap) return;
@@ -880,24 +883,24 @@ function selectPad(index) {
   pad_info.id = pad ? pad.id : 'unknown';
   if (!changed || !pad) return;
 
-  log('コントローラ選択: ' + pad.id, 'ok');
+  notify('コントローラ選択: ' + pad.id, 'ok');
   const stored = storedKeymapFor(pad.id);
   if (stored) {
     applyKeymapData(stored);
-    log('キーマップ自動適用: ' + pad.id, 'ok');
+    notify('キーマップ自動適用: ' + pad.id, 'ok');
   } else if (keymap) {
     keymap = null; keymapId = '';
     setKeymapInfo(); renderSlots(); rebuildDisplay([], []);
-    log('保存済みキーマップなし: 生データを送信', 'inf');
+    notify('保存済みキーマップなし: 生データを送信', 'inf');
   }
 }
 
 window.addEventListener('gamepadconnected', function(e){
-  log('コントローラ接続: ' + e.gamepad.id, 'ok');
+  notify('コントローラ接続: ' + e.gamepad.id, 'ok');
   refreshPadList();
 });
 window.addEventListener('gamepaddisconnected', function(e){
-  log('コントローラ切断: ' + e.gamepad.id, 'err');
+  notify('コントローラ切断: ' + e.gamepad.id, 'err');
   refreshPadList();
 });
 
@@ -960,7 +963,7 @@ function updateDisplay(axes, buttons, fromCan) {
 // Keymaps are not restored here: they are applied per pad, once a pad is
 // selected (see selectPad), so the stored name always matches the pad in use.
 (function() {
-  setConnUi('closed');
+  setConnUi('idle');
   setKeymapInfo();
   renderSlots();
   refreshPadList();
