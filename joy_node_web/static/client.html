@@ -226,6 +226,7 @@
         <div class="bind-banner" hidden>
           <span><b class="bind-slot-label"></b><span class="bind-progress"></span></span>
           <span>
+            <button class="bind-half" hidden>片方向で確定</button>
             <button class="bind-skip" hidden>スキップ</button>
             <button class="bind-cancel">キャンセル</button>
           </span>
@@ -341,7 +342,34 @@ function evalBinding(b, rawButtons, rawAxes) {
     const span = 1 - b.threshold;
     return span <= 0 ? 1 : Math.min(1, (r - b.threshold) / span);
   }
+  // Some browsers (seen with Chrome on Ubuntu) expose a stick axis as a
+  // button carrying the analog value, so an axis slot must be bindable to
+  // buttons as well: one button spanning the whole travel (button_axis) or
+  // one button per direction (button_pair).
+  if (b.kind === 'button_axis') {
+    const v = rawButtons[b.index] ?? 0;
+    const span = b.full - b.rest;
+    if (span === 0) return 0;
+    const out = clamp11((v - b.rest) / span);
+    return b.invert ? -out : out;
+  }
+  if (b.kind === 'button_pair') {
+    const out = clamp11(buttonSideValue(b.plus, rawButtons)
+                      - buttonSideValue(b.minus, rawButtons));
+    return b.invert ? -out : out;
+  }
   return 0;
+}
+
+const clamp11 = (v)=> Math.max(-1, Math.min(1, v));
+
+// One direction of a button_pair, normalized to 0..1 from its own rest.
+function buttonSideValue(side, rawButtons) {
+  if (!side) return 0;
+  const v = rawButtons[side.index] ?? 0;
+  const span = side.full - side.rest;
+  if (span === 0) return 0;
+  return Math.max(0, Math.min(1, (v - side.rest) / span));
 }
 
 function bindingText(b) {
@@ -349,6 +377,13 @@ function bindingText(b) {
   if (b.kind === 'button') return 'btn['+b.index+']';
   if (b.kind === 'axis') return 'axis['+b.index+']'+(b.invert ? ' (inv)' : '');
   if (b.kind === 'axis_trigger') return 'axis['+b.index+'] (trig)';
+  if (b.kind === 'button_axis') {
+    return 'btn['+b.index+'] (axis)'+(b.invert ? ' (inv)' : '');
+  }
+  if (b.kind === 'button_pair') {
+    return 'btn['+b.minus.index+']− / btn['+b.plus.index+']+'
+         + (b.invert ? ' (inv)' : '');
+  }
   return 'axis['+b.index+']'+(b.positive ? '+' : '−');
 }
 
@@ -356,8 +391,22 @@ function bindingText(b) {
 const isIndex = (v)=> typeof v === 'number' && Number.isInteger(v) && v >= 0;
 const isNum   = (v)=> typeof v === 'number' && Number.isFinite(v);
 
+function sanitizeButtonSide(side) {
+  if (typeof side !== 'object' || !side) return null;
+  if (!isIndex(side.index) || !isNum(side.rest) || !isNum(side.full)) return null;
+  return { index: side.index, rest: side.rest, full: side.full };
+}
+
 function sanitizeBinding(b) {
   if (typeof b !== 'object' || !b) return null;
+  if (b.kind === 'button_pair') {
+    const plus = sanitizeButtonSide(b.plus);
+    const minus = sanitizeButtonSide(b.minus);
+    if (!plus || !minus) return null;
+    const o = { kind:'button_pair', plus:plus, minus:minus };
+    if (typeof b.invert === 'boolean') o.invert = b.invert;
+    return o;
+  }
   if (!isIndex(b.index)) return null;
   switch (b.kind) {
     case 'button':
@@ -375,6 +424,12 @@ function sanitizeBinding(b) {
     case 'axis_trigger':
       if (!isNum(b.rest) || !isNum(b.full)) return null;
       return { kind:'axis_trigger', index:b.index, rest:b.rest, full:b.full };
+    case 'button_axis': {
+      if (!isNum(b.rest) || !isNum(b.full)) return null;
+      const o = { kind:'button_axis', index:b.index, rest:b.rest, full:b.full };
+      if (typeof b.invert === 'boolean') o.invert = b.invert;
+      return o;
+    }
     default:
       return null;
   }
@@ -539,6 +594,8 @@ class JoyCard {
     this.prevButtons = [];
     this.prevAxes = [];
     this.bindStartAxes = [];
+    this.bindStartButtons = [];
+    this.pendingAxisSide = null;        // first button direction of an axis slot
     this.slotEls = new Map();           // slot → {root, bind, val, inv}
 
     this.buildDom();
@@ -571,6 +628,7 @@ class JoyCard {
       banner:        q('.bind-banner'),
       bannerLabel:   q('.bind-slot-label'),
       bannerProg:    q('.bind-progress'),
+      bannerHalf:    q('.bind-half'),
       bannerSkip:    q('.bind-skip'),
       bannerCancel:  q('.bind-cancel'),
       slotGrid:      q('.slot-grid'),
@@ -593,6 +651,7 @@ class JoyCard {
     q('.btn-clear').onclick        = () => this.clearKeymap();
     q('.btn-import').onclick       = () => this.ui.file.click();
     q('.btn-export').onclick       = () => this.exportKeymap();
+    this.ui.bannerHalf.onclick     = () => this.bindAxisHalf();
     this.ui.bannerSkip.onclick     = () => this.skipSlot();
     this.ui.bannerCancel.onclick   = () => this.cancelBind();
     this.ui.file.onchange          = (ev) => this.loadKeymapFile(ev);
@@ -879,6 +938,8 @@ class JoyCard {
     this.prevButtons = gp ? gp.buttons.map(b => b.value) : [];
     this.prevAxes = gp ? Array.from(gp.axes) : [];
     this.bindStartAxes = this.prevAxes.slice();
+    this.bindStartButtons = this.prevButtons.slice();
+    this.pendingAxisSide = null;
     this.updateBindBanner();
     this.updateSlotStates();
   }
@@ -887,6 +948,7 @@ class JoyCard {
     const wasSequence = this.seqActive;
     this.seqActive = false;
     this.bindSlot = null;
+    this.pendingAxisSide = null;
     this.updateBindBanner();
     this.updateSlotStates();
     if (wasSequence) this.note('順に割り当てを中断', 'inf');
@@ -895,9 +957,12 @@ class JoyCard {
   updateBindBanner() {
     if (!this.bindSlot) { this.ui.banner.hidden = true; return; }
     this.ui.banner.hidden = false;
-    this.ui.bannerLabel.textContent = SLOT_LABEL[this.bindSlot] || this.bindSlot;
+    const half = !!this.pendingAxisSide;
+    this.ui.bannerLabel.textContent = (SLOT_LABEL[this.bindSlot] || this.bindSlot)
+        + (half ? ' — 反対方向' : '');
     this.ui.bannerProg.textContent =
         this.seqActive ? '(' + (this.seqIndex + 1) + ' / ' + SLOT_ORDER.length + ')' : '';
+    this.ui.bannerHalf.hidden = !half;
     this.ui.bannerSkip.hidden = !this.seqActive;
     this.ui.bannerCancel.textContent = this.seqActive ? '中断' : 'キャンセル';
   }
@@ -935,6 +1000,7 @@ class JoyCard {
     this.keymap[slot] = binding;
     if (!this.keymapId && this.padConnected) this.keymapId = this.padId;
     this.bindSlot = null;
+    this.pendingAxisSide = null;
     this.persistKeymap();
     this.setKeymapInfo();
     this.renderSlot(slot);
@@ -957,8 +1023,9 @@ class JoyCard {
     if (!this.keymap) return;
     const b = this.keymap[slot];
     if (!b) return;
-    if (b.kind === 'axis') b.invert = !b.invert;
-    else if (b.kind === 'axis_dir') b.positive = !b.positive;
+    if (b.kind === 'axis' || b.kind === 'button_axis' || b.kind === 'button_pair') {
+      b.invert = !b.invert;
+    } else if (b.kind === 'axis_dir') b.positive = !b.positive;
     else return;
     this.persistKeymap();
     this.renderSlot(slot);
@@ -1016,9 +1083,9 @@ class JoyCard {
     const els = this.slotEls.get(slot);
     if (!els) return;
     const b = this.keymap ? this.keymap[slot] : null;
-    const invertable = !!b && (b.kind === 'axis' || b.kind === 'axis_dir');
-    const inverted = !!b && (b.kind === 'axis' ? !!b.invert
-                          : b.kind === 'axis_dir' ? !b.positive : false);
+    const invertable = !!b && (b.kind === 'axis' || b.kind === 'axis_dir'
+                            || b.kind === 'button_axis' || b.kind === 'button_pair');
+    const inverted = !!b && (b.kind === 'axis_dir' ? !b.positive : !!b.invert);
     els.bind.textContent = bindingText(b);
     els.inv.hidden = !invertable;
     els.inv.className = 'inv' + (inverted ? ' on' : '');
@@ -1090,13 +1157,72 @@ class JoyCard {
         }
       }
     } else {
-      // Axis slot: only an axis can be bound.
+      // Axis slot: a real axis, or - where the browser reports a stick axis as
+      // a button (Chrome on Ubuntu does this) - a button carrying the analog
+      // value. A button whose rest sits mid-scale spans the whole travel on
+      // its own; one resting at an end covers a single direction, so the other
+      // direction is picked up as a second button (button_pair).
       const ai = movedAxis();
       if (ai >= 0) { this.setBinding(slot, {kind:'axis', index:ai}); }
+      else {
+        const bi = this.movedButton(rawButtons);
+        if (bi >= 0) this.bindAxisToButton(slot, bi, rawButtons[bi]);
+      }
     }
 
     this.prevButtons = rawButtons;
     this.prevAxes = rawAxes;
+  }
+
+  // A button whose analog value left the value it rested at when binding
+  // started. Compared against the bind-start rest (not the previous frame) so
+  // a slowly pushed axis-as-button is still detected.
+  movedButton(rawButtons) {
+    for (let i = 0; i < rawButtons.length; i++) {
+      const rest = this.bindStartButtons[i] ?? 0;
+      if (Math.abs(rawButtons[i] - rest) >= PRESS_THRESHOLD) {
+        if (this.pendingAxisSide && this.pendingAxisSide.index === i) continue;
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  bindAxisToButton(slot, index, value) {
+    const rest = this.bindStartButtons[index] ?? 0;
+    const full = value > rest ? 1 : 0;      // button values are bounded 0..1
+
+    // Rest near the middle: this single button carries both directions.
+    if (rest > 0.25 && rest < 0.75) {
+      this.setBinding(slot, {kind:'button_axis', index:index, rest:rest, full:full});
+      return;
+    }
+
+    const side = { index: index, rest: rest, full: full };
+    if (!this.pendingAxisSide) {
+      // First direction captured; wait for the opposite one, which the user
+      // can decline with 片方向で確定.
+      this.pendingAxisSide = side;
+      this.note((SLOT_LABEL[slot] || slot) + ': btn[' + index
+                + '] を検出。反対方向も操作してください', 'inf');
+      this.updateBindBanner();
+      return;
+    }
+
+    const first = this.pendingAxisSide;
+    this.pendingAxisSide = null;
+    // The direction moved first becomes the positive one.
+    this.setBinding(slot, {kind:'button_pair', plus:first, minus:side});
+  }
+
+  // Finish an axis slot with only the direction captured so far.
+  bindAxisHalf() {
+    const slot = this.bindSlot;
+    const side = this.pendingAxisSide;
+    if (!slot || !side) return;
+    this.pendingAxisSide = null;
+    this.setBinding(slot, {kind:'button_axis', index:side.index,
+                           rest:side.rest, full:side.full});
   }
 
   // ── Mapping ─────────────────────────────────────────────────────────────

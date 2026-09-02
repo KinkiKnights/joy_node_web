@@ -116,7 +116,13 @@ Webブラウザ ⇄ ROS2 ノード間の通信仕様と、ノードが Publish �
 | `axis` | `index` | `invert`(bool) / `deadzone`(number) | `axes[index]`。`\|v\| < deadzone` で 0、`invert` で符号反転 |
 | `axis_trigger` | `index` `rest` `full` | - | `clamp01((v - rest) / (full - rest))`。`full == rest` なら 0 |
 | `axis_dir` | `index` `positive` `threshold` | - | `r = positive ? v : -v`。`r < threshold` で 0、以降 `min(1, (r - threshold) / (1 - threshold))` |
+| `button_axis` | `index` `rest` `full` | `invert`(bool) | `clamp(-1..1, (buttons[index] - rest) / (full - rest))`。`full == rest` なら 0 |
+| `button_pair` | `plus` `minus`（各 `{index, rest, full}`） | `invert`(bool) | `clamp01(plus) - clamp01(minus)`（各辺を自分の `rest`→`full` で 0-1 正規化） |
 
+- `button_axis` / `button_pair` は **軸をボタンとして報告するブラウザ向け**（Ubuntu の Chrome で確認）。ボタンのアナログ値（0.0-1.0）から軸値（-1.0-1.0）を作る。
+  - `button_axis`: 1つのボタンが軸の全域を持つ場合（静止値が中央付近）。片方向のみの確定にも使う（`rest` が端の場合、出力は 0-1）。
+  - `button_pair`: 1軸が方向ごとに2ボタンへ分かれている場合。
+  - この2種別は g2e には無いため、これらを含むファイルは g2e 側では読めない（`button` / `axis` / `axis_trigger` / `axis_dir` のみのファイルは従来どおり相互利用可）。
 - `index` は 0 以上の整数のみ有効。`threshold` は `[0, 0.99]` にクランプされる。
 - 未割り当てスロットの出力は 0。
 - キーマップ未設定（「キーマップ解除」状態）のときは、ゲームパッドの生データをそのまま送信する。
@@ -127,6 +133,9 @@ Webブラウザ ⇄ ROS2 ノード間の通信仕様と、ノードが Publish �
 
 - 「割当開始」: スロット表示順（下表の順）に先頭から点滅し、対応する入力を操作するとバインドして次のスロットへ進む。スキップ・中断が可能。
 - 個別バインド: スロットをクリックして待受状態にし、割り当てたい入力を操作する。
+- 軸スロット（`stick_*_x` / `stick_*_y`）の判定順は「実軸 → ボタン」。ボタンが動いた場合:
+  - 待受開始時の静止値が中央付近（0.25-0.75）なら、その1ボタンで全域とみなし `button_axis` を確定。
+  - 静止値が端なら片方向として保持し、バナーが「— 反対方向」表示に変わる。別のボタンが動けば `button_pair`、「片方向で確定」を押せばその方向だけの `button_axis` になる。
 - 「インポート」で JSON 読み込み、「クリア」で割り当て解除（生データ送信に戻る）。
 
 ### 4.5 複数台接続時の独立性
