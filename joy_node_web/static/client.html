@@ -515,9 +515,10 @@ const uri_obj = new URL(window.location.href);
 // Resolution order for a card's node (/joys) endpoint:
 //   1. ?ws=... query parameter (comma separated: one entry per card)
 //   2. SERVER_CFG.ws_url              … fixed URL given to the server
-//   3. same host + SERVER_CFG.ws_port … port omitted → this page's origin
-// Deliberately not remembered across visits: a saved URL would silently
-// point a page served by one robot at another robot's node.
+//   3. the URL this card was last given (see the store below)
+//   4. same host + SERVER_CFG.ws_port … port omitted → this page's origin
+// An explicitly given URL always wins over the remembered one: the store
+// only fills in what nobody asked for.
 function derivedWsUrl() {
   const scheme = (uri_obj.protocol === 'https:') ? 'wss' : 'ws';
   const port   = SERVER_CFG.ws_port || uri_obj.port;
@@ -530,6 +531,33 @@ const WS_PARAM_LIST = (uri_obj.searchParams.get('ws') || '')
 function explicitWsUrl(cardIndex) {
   if (WS_PARAM_LIST.length) return WS_PARAM_LIST[cardIndex] || null;
   return SERVER_CFG.ws_url || null;
+}
+
+// ── Connection settings store (per card, kept across visits) ──────────────
+// { "<card index>": "<ws url>" }. Keyed by card index alone, so changing
+// ?num= can never mismatch: a card with no entry falls back to the derived
+// URL and entries beyond the current card count simply stay unused until
+// that many cards are asked for again. localStorage is per origin, so a
+// page served by one robot can only ever restore its own saved URLs.
+const WS_URL_STORAGE = 'joy_ws_urls';
+
+function loadWsUrlStore() {
+  try {
+    const o = JSON.parse(localStorage.getItem(WS_URL_STORAGE) || '{}');
+    return (o && typeof o === 'object') ? o : {};
+  } catch(_) { return {}; }
+}
+function storedWsUrl(cardIndex) {
+  const url = loadWsUrlStore()[String(cardIndex)];
+  return (typeof url === 'string' && url) ? url : null;
+}
+function storeWsUrl(cardIndex, url) {
+  try {
+    const store = loadWsUrlStore();
+    if (url) store[String(cardIndex)] = url;
+    else delete store[String(cardIndex)];
+    localStorage.setItem(WS_URL_STORAGE, JSON.stringify(store));
+  } catch(_) { /* no storage: the page keeps working, just does not remember */ }
 }
 
 // ── Card count ────────────────────────────────────────────────────────────
@@ -641,7 +669,12 @@ class JoyCard {
       this.ui.modalNo.textContent = this.label;
     }
 
-    this.ui.url.value = explicitWsUrl(this.index) || derivedWsUrl();
+    this.ui.url.value = explicitWsUrl(this.index)
+                     || storedWsUrl(this.index)
+                     || derivedWsUrl();
+    // Remembered as typed, not on a successful connection: a URL that did
+    // not connect is exactly the one worth having back on the next visit.
+    this.ui.url.oninput            = () => storeWsUrl(this.index, this.ui.url.value.trim());
 
     this.ui.btnConnect.onclick     = () => this.connect();
     this.ui.btnDisconnect.onclick  = () => this.disconnect();
