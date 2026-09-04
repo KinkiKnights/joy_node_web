@@ -300,6 +300,10 @@ const TRIGGER_DELTA = 0.4;     // axis travel that identifies a trigger axis
 const MAX_CARDS = 12;          // sanity bound for ?num=
 const POLL_MS = 50;
 const RETRY_MS = 5000;
+// How long a card waits for a socket to open before giving the form back.
+// The browser's own connect timeout is far longer than anyone wants to sit
+// in front of a wrong address.
+const CONNECT_TIMEOUT_MS = 5000;
 
 // connected / connecting / failed / idle → lamp and label
 const CONN_STATES = {
@@ -601,6 +605,8 @@ class JoyCard {
     this.trying = false;
     this.armed = false;                 // a connection was asked for at least once
     this.manualDisconnect = false;
+    this.connectTimer = null;           // this card's connect timeout, if armed
+    this.everConnected = false;         // this card reached the node at least once
 
     // controller
     this.padIndex = -1;
@@ -721,11 +727,38 @@ class JoyCard {
   }
 
   disconnect() {
+    this.clearConnectTimer();
     if (this.ws) { this.ws.onclose = null; this.ws.close(); this.ws = null; }
     this.trying = false;
     this.manualDisconnect = true;       // stay down until 接続 is pressed
     this.setConnUi('idle');
     this.log('切断しました','err');
+  }
+
+  // ── Connect timeout ─────────────────────────────────────────────────────
+  // One timer per card, holding only that card's socket, so a card that
+  // cannot reach its node never blocks or disturbs the others.
+  clearConnectTimer() {
+    if (this.connectTimer === null) return;
+    clearTimeout(this.connectTimer);
+    this.connectTimer = null;
+  }
+
+  armConnectTimer(ws, url) {
+    this.clearConnectTimer();
+    this.connectTimer = setTimeout(() => {
+      this.connectTimer = null;
+      if (this.ws === ws) return;       // opened in the meantime: nothing to do
+      // Drop the socket for good: no handler of it may touch this card again.
+      ws.onopen = null; ws.onclose = null; ws.onerror = null; ws.onmessage = null;
+      ws.close();
+      this.trying = false;
+      // A card that never got through waits for the operator instead of
+      // retrying: the address is what needs fixing, and 接続 re-arms it.
+      if (!this.everConnected) this.armed = false;
+      this.setConnUi('failed');
+      this.log('接続失敗 (' + (CONNECT_TIMEOUT_MS / 1000) + '秒で応答なし) ' + url, 'err');
+    }, CONNECT_TIMEOUT_MS);
   }
 
   wsInit(url) {
@@ -734,14 +767,17 @@ class JoyCard {
     this.setConnUi('connecting');
     this.log('接続中 '+url+' …','inf');
     const ws = new WebSocket(url);
+    this.armConnectTimer(ws, url);
     // A socket this card has already replaced must never drive its UI again.
     ws.onopen = () => {
-      this.ws = ws; this.trying = false;
+      this.clearConnectTimer();
+      this.ws = ws; this.trying = false; this.everConnected = true;
       this.setConnUi('connected');
       this.log('接続: '+url,'ok');
     };
     ws.onclose = () => {
       if (this.ws && this.ws !== ws) return;
+      this.clearConnectTimer();
       this.ws = null; this.trying = false;
       this.setConnUi(this.manualDisconnect ? 'idle' : 'failed');
       this.log(this.manualDisconnect ? '切断' : '接続失敗','err');
