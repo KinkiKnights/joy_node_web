@@ -766,7 +766,19 @@ class JoyCard {
     this.trying = true;
     this.setConnUi('connecting');
     this.log('接続中 '+url+' …','inf');
-    const ws = new WebSocket(url);
+    // A malformed address throws here, leaving no socket and no timer to fall
+    // back on, so the form has to be handed back on the spot. At boot this
+    // also keeps one bad card from stopping the others from connecting.
+    let ws;
+    try {
+      ws = new WebSocket(url);
+    } catch(_) {
+      this.trying = false;
+      if (!this.everConnected) this.armed = false;
+      this.setConnUi('failed');
+      this.log('接続先が不正です: '+url,'err');
+      return;
+    }
     this.armConnectTimer(ws, url);
     // A socket this card has already replaced must never drive its UI again.
     ws.onopen = () => {
