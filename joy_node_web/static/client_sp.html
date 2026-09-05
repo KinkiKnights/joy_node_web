@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>JoyNodeWebClient SP</title>
+  <style>
+    :root {
+      color-scheme: light;
+      /* KINKI KNIGHTS colours (kinkiknights.com) — same palette as client.html */
+      --bg: #f2f8fb;
+      --panel: #ffffff;
+      --fg: #1d242b;
+      --muted: #5b6770;
+      --line: #dde3e8;
+      --accent: #15719c;
+      --accent-strong: #115a7d;
+      --accent-bright: #47b9e6;
+      --accent-soft: rgba(21,113,156,0.08);
+      --ok: #1a7f37; --warn: #b26a00; --err: #c62828;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      margin: 0;
+      overscroll-behavior: none;
+    }
+    body {
+      background: var(--bg); color: var(--fg);
+      font-family: "Noto Sans JP", 游ゴシック体, YuGothic, 游ゴシック,
+                   -apple-system, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+      font-weight: bold; font-size: 16px;
+      /* A driving surface, not a document: no scrolling, no zooming, no
+         long-press selection anywhere on the page. */
+      touch-action: none;
+      -webkit-user-select: none; user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent;
+      display: flex; flex-direction: column;
+      padding-bottom: env(safe-area-inset-bottom);
+      padding-left: env(safe-area-inset-left);
+      padding-right: env(safe-area-inset-right);
+      overflow: hidden;
+    }
+
+    /* ── Header ───────────────────────────────────────────────────────── */
+    header.app-header {
+      flex: 0 0 auto;
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 8px 12px; padding-top: calc(8px + env(safe-area-inset-top));
+      background: rgba(255,255,255,0.96); border-bottom: 1px solid var(--line);
+    }
+    .app-title { font-size: 17px; font-weight: 900; letter-spacing: 0.04em; margin: 0; }
+    .app-title .tag { font-size: 12px; color: var(--accent); margin-left: 6px;
+                      letter-spacing: 0.1em; }
+    .conn-lamp { display: inline-flex; align-items: center; gap: 6px; }
+    .conn-state { font-size: 14px; }
+    .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%;
+           background: #c3ccd3; }
+    .dot.connected { background: var(--ok); }
+    .dot.connecting { background: var(--warn); }
+    .dot.error { background: var(--err); }
+
+    /* ── Connection bar ───────────────────────────────────────────────── */
+    .conn-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 6px;
+                padding: 8px 12px 0; }
+    input[type=text] { flex: 1 1 auto; min-width: 0;
+                       background: var(--panel); color: var(--fg);
+                       border: 1px solid var(--line); border-radius: 4px;
+                       padding: 7px 9px; font-size: 14px; font-weight: bold;
+                       /* the URL field is the one place typing is expected */
+                       -webkit-user-select: text; user-select: text;
+                       touch-action: auto; }
+    input[type=text]:focus { outline: none; border-color: var(--accent-bright); }
+    input[type=text]:disabled { background: var(--bg); color: var(--muted); }
+    .conn-bar button { flex: 0 0 auto; background: #eef4f8; color: var(--fg);
+                       border: 1px solid var(--line); border-radius: 4px;
+                       padding: 7px 14px; font-size: 14px; font-weight: bold;
+                       cursor: pointer; }
+    .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .btn-primary:active { background: var(--accent-strong); border-color: var(--accent-strong); }
+    .log-row { flex: 0 0 auto; margin: 6px 12px 0; padding: 5px 8px;
+               background: var(--panel); border: 1px solid var(--line);
+               border-radius: 4px; }
+    .log-line { display: block; font-size: 11px; font-weight: normal;
+                font-family: monospace; color: var(--fg);
+                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .log-line.ok { color: var(--ok); }
+    .log-line.err { color: var(--err); }
+
+    /* ── Debug read-out (deliberately small and quiet) ─────────────────── */
+    .dbg { flex: 0 0 auto; margin: 4px 12px 0; font-family: monospace;
+           font-size: 10px; font-weight: normal; color: var(--muted);
+           line-height: 1.5; white-space: nowrap; overflow: hidden;
+           text-overflow: ellipsis; }
+
+    /* ── Control stack: bottom-up = stick, turn, lift ──────────────────── */
+    /* The column grows from the top but its content is pinned to the
+       bottom, so the stick always sits under the thumb no matter how tall
+       the phone is. */
+    main.pad {
+      flex: 1 1 auto; min-height: 0;
+      display: flex; flex-direction: column; justify-content: flex-end;
+      align-items: center; gap: 14px;
+      padding: 10px 12px 16px;
+    }
+    .btn-row { flex: 0 0 auto; display: flex; gap: 12px; width: 100%; max-width: 420px; }
+    .pad-btn {
+      flex: 1 1 0; min-width: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 2px;
+      height: 62px; border-radius: 10px;
+      border: 1px solid var(--line); background: var(--panel); color: var(--fg);
+      font-size: 16px; font-weight: bold; font-family: inherit;
+      box-shadow: 0 2px 6px rgba(29,36,43,0.08);
+      touch-action: none; cursor: pointer;
+    }
+    .pad-btn .glyph { font-size: 20px; line-height: 1; color: var(--accent); }
+    .pad-btn .cap { font-size: 13px; letter-spacing: 0.04em; }
+    .pad-btn.on { background: var(--accent); border-color: var(--accent); color: #fff;
+                  box-shadow: inset 0 2px 6px rgba(0,0,0,0.18); }
+    .pad-btn.on .glyph { color: #fff; }
+
+    /* ── Stick ────────────────────────────────────────────────────────── */
+    .stick-base {
+      position: relative;
+      /* flex-shrink off + a square aspect: a cramped viewport may clip the
+         stack, but the stick is never squashed into an ellipse, which would
+         make the deflection the finger sees disagree with the value sent. */
+      flex: 0 0 auto;
+      width: min(78vw, 320px, 42vh);   /* never crowd out the buttons */
+      aspect-ratio: 1 / 1;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 50% 50%, #ffffff 0%, #eaf2f7 72%, #dfe9ef 100%);
+      border: 2px solid var(--line);
+      box-shadow: inset 0 2px 10px rgba(29,36,43,0.10);
+      touch-action: none;
+    }
+    /* cross hair, so the neutral point is visible at a glance */
+    .stick-base::before, .stick-base::after {
+      content: ""; position: absolute; background: var(--line);
+    }
+    .stick-base::before { left: 12%; right: 12%; top: 50%; height: 1px; }
+    .stick-base::after { top: 12%; bottom: 12%; left: 50%; width: 1px; }
+    .stick-knob {
+      position: absolute; left: 50%; top: 50%; z-index: 1;  /* over the cross hair */
+      width: 38%; height: 38%; border-radius: 50%;
+      background: var(--accent); border: 2px solid var(--accent-strong);
+      box-shadow: 0 3px 10px rgba(17,90,125,0.35);
+      transform: translate(-50%, -50%);
+      will-change: transform;
+    }
+    .stick-base.active .stick-knob { background: var(--accent-bright);
+                                     border-color: var(--accent); }
+
+    /* The page is meant to be held upright; a short viewport (landscape, or
+       a small phone with the address bar out) still has to show every
+       control. */
+    @media (max-height: 560px) {
+      main.pad { gap: 8px; padding: 6px 12px 10px; }
+      .pad-btn { height: 46px; }
+      .pad-btn .glyph { font-size: 16px; }
+      .stick-base { width: min(60vw, 24vh); }
+    }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <h1 class="app-title">JoyNodeWeb<span class="tag">SP</span></h1>
+    <span class="conn-lamp">
+      <span class="dot" id="dot"></span>
+      <span class="conn-state" id="conn-state">未接続</span>
+    </span>
+  </header>
+
+  <div class="conn-bar">
+    <input type="text" id="ws-url" placeholder="ws://hostname/joys"
+           autocomplete="off" autocapitalize="off" spellcheck="false">
+    <button id="btn-connect" class="btn-primary">接続</button>
+    <button id="btn-disconnect" hidden>切断</button>
+  </div>
+  <div class="log-row"><span class="log-line" id="log-line">-</span></div>
+  <div class="dbg" id="dbg">axes: - / buttons: -</div>
+
+  <main class="pad">
+    <!-- top of the stack: up / down -->
+    <div class="btn-row">
+      <button class="pad-btn" id="btn-up"><span class="glyph">▲</span><span class="cap">上</span></button>
+      <button class="pad-btn" id="btn-down"><span class="glyph">▼</span><span class="cap">下</span></button>
+    </div>
+    <!-- middle: turn left / turn right -->
+    <div class="btn-row">
+      <button class="pad-btn" id="btn-turn-l"><span class="glyph">↺</span><span class="cap">左旋回</span></button>
+      <button class="pad-btn" id="btn-turn-r"><span class="glyph">↻</span><span class="cap">右旋回</span></button>
+    </div>
+    <!-- bottom, centred: the 360° stick -->
+    <div class="stick-base" id="stick">
+      <div class="stick-knob" id="knob"></div>
+    </div>
+  </main>
+
+<!-- Server-injected configuration. Replaced by joy_node_web.client at
+     delivery time; stays an empty object when the file is opened directly. -->
+<script id="server-cfg" type="application/json">{{SERVER_CFG}}</script>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════════
+//  出力マッピング定義（実機に合わせて調整するのはここだけ）
+// ══════════════════════════════════════════════════════════════════════════
+// 送信するメッセージは PC 版 (client.html) と同一スキーマ・同一配列長:
+//   { id, axes: number[4], buttons: number[17] }
+// 配列長は W3C standard gamepad の並び (STD_AXES / STD_BUTTONS) に合わせて
+// あり、使わないスロットは 0 で埋める。受信側 (joy_node) は同じパーサで
+// 処理できる。
+//
+//   axes[0] = stick_l_x, axes[1] = stick_l_y,
+//   axes[2] = stick_r_x, axes[3] = stick_r_y
+//   buttons[0..16] = face_down, face_right, face_left, face_up,
+//                    shoulder_l, shoulder_r, trigger_l, trigger_r,
+//                    select, start, stick_l_click, stick_r_click,
+//                    dpad_up, dpad_down, dpad_left, dpad_right, home
+//
+// 各コントロールの出力先は { axis: n, ... } か { button: n, value: v } の
+// どちらでも書ける。軸に割り当て直したい / ボタンに割り当て直したい場合は
+// このブロックの該当行を書き換えるだけでよい。
+const MAP = {
+  AXES_LEN: 4,        // PC 版 (STD_AXES) と同じ長さ
+  BUTTONS_LEN: 17,    // PC 版 (STD_BUTTONS) と同じ長さ
+
+  // 丸スティック（360°）。値域は -1.0 〜 +1.0。
+  //   X: 右が正（W3C Gamepad API と同じ）
+  //   Y: 下が正 / 上が負（W3C Gamepad API と同じ。PC 版はブラウザの生値を
+  //      そのまま流しているので、それに合わせる）
+  STICK_X: { axis: 0, invert: false },
+  STICK_Y: { axis: 1, invert: false },
+  // スティックの不感帯（半径方向）。0 にすれば無効。
+  STICK_DEADZONE: 0.05,
+
+  // 旋回ボタン。既定は右スティック X 相当の axes[2]。
+  TURN_LEFT:  { axis: 2, value: -1 },
+  TURN_RIGHT: { axis: 2, value: +1 },
+
+  // 上下ボタン。既定は D-pad 上 / 下（buttons[12] / buttons[13]）。
+  LIFT_UP:    { button: 12, value: 1 },
+  LIFT_DOWN:  { button: 13, value: 1 },
+
+  // WebSocket の id フィールド（表示用・任意）
+  CLIENT_ID: 'JoyNodeWeb SP (touch)'
+};
+// ══════════════════════════════════════════════════════════════════════════
+
+const POLL_MS = 50;            // 送信周期（PC 版と同じ 20Hz）
+const RETRY_MS = 5000;         // 自動再接続の間隔（PC 版と同じ）
+const CONNECT_TIMEOUT_MS = 5000;  // 接続待ちの打ち切り（PC 版と同じ）
+
+// connected / connecting / failed / idle → lamp and label（PC 版と同じ）
+const CONN_STATES = {
+  connected:  { dot: 'connected',  text: '接続済' },
+  connecting: { dot: 'connecting', text: '接続中...' },
+  failed:     { dot: 'error',      text: '接続失敗' },
+  idle:       { dot: '',           text: '未接続' }
+};
+
+const clamp11 = (v)=> Math.max(-1, Math.min(1, v));
+
+// ── Server config ─────────────────────────────────────────────────────────
+const SERVER_CFG = (function(){
+  const el = document.getElementById('server-cfg');
+  try { return JSON.parse(el.textContent) || {}; } catch(_) { return {}; }
+})();
+
+const uri_obj = new URL(window.location.href);
+
+// Resolution order for the node (/joys) endpoint — same as client.html, with
+// the single difference that this page has one connection, so only the first
+// entry of a comma separated ?ws= list is used.
+//   1. ?ws=...            … explicit
+//   2. SERVER_CFG.ws_url  … fixed URL given to the delivery server
+//   3. the URL last typed here (localStorage)
+//   4. same host + SERVER_CFG.ws_port … port omitted → this page's origin
+function derivedWsUrl() {
+  const scheme = (uri_obj.protocol === 'https:') ? 'wss' : 'ws';
+  const port   = SERVER_CFG.ws_port || uri_obj.port;
+  return scheme + '://' + uri_obj.hostname + (port ? ':' + port : '') + '/joys';
+}
+function explicitWsUrl() {
+  const q = (uri_obj.searchParams.get('ws') || '')
+    .split(',').map(function(s){ return s.trim(); }).filter(function(s){ return s; });
+  if (q.length) return q[0];
+  return SERVER_CFG.ws_url || null;
+}
+
+// Shares client.html's store, under the single-connection slot "0": the page
+// is served by the robot it drives, localStorage is per origin, so /joy and
+// /joysp on one robot remembering the same endpoint is what an operator
+// expects. (Nothing else is shared with the PC page.)
+const WS_URL_STORAGE = 'joy_ws_urls';
+const WS_URL_SLOT = '0';
+
+function loadWsUrlStore() {
+  try {
+    const o = JSON.parse(localStorage.getItem(WS_URL_STORAGE) || '{}');
+    return (o && typeof o === 'object') ? o : {};
+  } catch(_) { return {}; }
+}
+function storedWsUrl() {
+  const url = loadWsUrlStore()[WS_URL_SLOT];
+  return (typeof url === 'string' && url) ? url : null;
+}
+function storeWsUrl(url) {
+  try {
+    const store = loadWsUrlStore();
+    if (url) store[WS_URL_SLOT] = url;
+    else delete store[WS_URL_SLOT];
+    localStorage.setItem(WS_URL_STORAGE, JSON.stringify(store));
+  } catch(_) { /* no storage: the page keeps working, just does not remember */ }
+}
+
+// ── Control state ─────────────────────────────────────────────────────────
+// Everything the operator is touching right now, in UI terms. The wire
+// format is derived from it once per tick, so MAP is the only place that
+// knows which axis or button a control ends up in.
+const ctl = {
+  stickX: 0,      // -1 (左) … +1 (右)
+  stickY: 0,      // -1 (上) … +1 (下)   ※W3C 準拠で下が正
+  turnLeft: false, turnRight: false,
+  liftUp: false, liftDown: false
+};
+
+// Apply one control's value onto the outgoing arrays.
+function emit(target, value, axes, buttons) {
+  if (!target) return;
+  if (typeof target.axis === 'number') {
+    const v = ('value' in target) ? value * target.value : value;
+    if (target.axis >= 0 && target.axis < axes.length) axes[target.axis] += v;
+  } else if (typeof target.button === 'number') {
+    const v = ('value' in target) ? value * target.value : value;
+    if (target.button >= 0 && target.button < buttons.length) {
+      buttons[target.button] = v;
+    }
+  }
+}
+
+function buildWire() {
+  const axes = new Array(MAP.AXES_LEN).fill(0);
+  const buttons = new Array(MAP.BUTTONS_LEN).fill(0);
+
+  let sx = ctl.stickX, sy = ctl.stickY;
+  if (MAP.STICK_X.invert) sx = -sx;
+  if (MAP.STICK_Y.invert) sy = -sy;
+  emit(MAP.STICK_X, sx, axes, buttons);
+  emit(MAP.STICK_Y, sy, axes, buttons);
+
+  // 左右同時押しは打ち消し合う（片方だけ押されたときに ±1）
+  if (ctl.turnLeft)  emit(MAP.TURN_LEFT, 1, axes, buttons);
+  if (ctl.turnRight) emit(MAP.TURN_RIGHT, 1, axes, buttons);
+  if (ctl.liftUp)    emit(MAP.LIFT_UP, 1, axes, buttons);
+  if (ctl.liftDown)  emit(MAP.LIFT_DOWN, 1, axes, buttons);
+
+  for (let i = 0; i < axes.length; i++) axes[i] = clamp11(axes[i]);
+  return { axes: axes, buttons: buttons };
+}
+
+// ── Connection ────────────────────────────────────────────────────────────
+// The same four-state machine as a client.html card, minus everything that
+// only makes sense with several cards.
+const ui = {
+  dot: document.getElementById('dot'),
+  state: document.getElementById('conn-state'),
+  url: document.getElementById('ws-url'),
+  btnConnect: document.getElementById('btn-connect'),
+  btnDisconnect: document.getElementById('btn-disconnect'),
+  logLine: document.getElementById('log-line'),
+  dbg: document.getElementById('dbg')
+};
+
+const conn = {
+  ws: null,
+  trying: false,
+  armed: false,
+  manualDisconnect: false,
+  everConnected: false,
+  timer: null
+};
+
+function log(msg, cls) {
+  const now = new Date().toTimeString().slice(0,8);
+  ui.logLine.className = 'log-line' + (cls && cls !== 'inf' ? ' ' + cls : '');
+  ui.logLine.textContent = now + '  ' + msg;
+}
+
+function setConnUi(state) {
+  const s = CONN_STATES[state] || CONN_STATES.idle;
+  ui.dot.className = 'dot' + (s.dot ? ' ' + s.dot : '');
+  ui.state.textContent = s.text;
+  ui.btnConnect.hidden = (state === 'connected');
+  ui.btnDisconnect.hidden = (state !== 'connected');
+  ui.url.disabled = (state === 'connected');
+}
+
+function clearConnectTimer() {
+  if (conn.timer === null) return;
+  clearTimeout(conn.timer);
+  conn.timer = null;
+}
+
+function armConnectTimer(ws, url) {
+  clearConnectTimer();
+  conn.timer = setTimeout(function(){
+    conn.timer = null;
+    if (conn.ws === ws) return;         // opened in the meantime
+    ws.onopen = null; ws.onclose = null; ws.onerror = null; ws.onmessage = null;
+    ws.close();
+    conn.trying = false;
+    // Never got through: wait for the operator, the address is what needs
+    // fixing and 接続 re-arms it.
+    if (!conn.everConnected) conn.armed = false;
+    setConnUi('failed');
+    log('接続失敗 (' + (CONNECT_TIMEOUT_MS / 1000) + '秒で応答なし) ' + url, 'err');
+  }, CONNECT_TIMEOUT_MS);
+}
+
+function wsInit(url) {
+  if (conn.trying) return;
+  conn.trying = true;
+  setConnUi('connecting');
+  log('接続中 ' + url + ' …', 'inf');
+  let ws;
+  try {
+    ws = new WebSocket(url);
+  } catch(_) {
+    conn.trying = false;
+    if (!conn.everConnected) conn.armed = false;
+    setConnUi('failed');
+    log('接続先が不正です: ' + url, 'err');
+    return;
+  }
+  armConnectTimer(ws, url);
+  ws.onopen = function(){
+    clearConnectTimer();
+    conn.ws = ws; conn.trying = false; conn.everConnected = true;
+    setConnUi('connected');
+    log('接続: ' + url, 'ok');
+  };
+  ws.onclose = function(){
+    if (conn.ws && conn.ws !== ws) return;
+    clearConnectTimer();
+    conn.ws = null; conn.trying = false;
+    setConnUi(conn.manualDisconnect ? 'idle' : 'failed');
+    log(conn.manualDisconnect ? '切断' : '接続失敗', 'err');
+  };
+  ws.onerror = function(){
+    if (!conn.ws || conn.ws === ws) log('WebSocket エラー', 'err');
+  };
+  ws.onmessage = function(){ /* the node does not talk back to this page */ };
+}
+
+function connect() {
+  if (conn.ws && conn.ws.readyState === WebSocket.OPEN) { log('接続済み','inf'); return; }
+  const url = ui.url.value.trim();
+  if (!url) return;
+  conn.armed = true;
+  conn.manualDisconnect = false;
+  wsInit(url);
+}
+
+function disconnect() {
+  clearConnectTimer();
+  if (conn.ws) { conn.ws.onclose = null; conn.ws.close(); conn.ws = null; }
+  conn.trying = false;
+  conn.manualDisconnect = true;
+  setConnUi('idle');
+  log('切断しました', 'err');
+}
+
+function retry() {
+  if (!conn.armed || conn.manualDisconnect) return;
+  if (conn.trying) return;
+  if (conn.ws && conn.ws.readyState === WebSocket.OPEN) return;
+  const url = ui.url.value.trim();
+  if (!url) return;
+  log('再接続 …', 'inf');
+  wsInit(url);
+}
+
+function send(axes, buttons) {
+  if (!conn.ws || conn.ws.readyState !== WebSocket.OPEN) return;
+  conn.ws.send(JSON.stringify({ id: MAP.CLIENT_ID, axes: axes, buttons: buttons }));
+}
+
+ui.url.value = explicitWsUrl() || storedWsUrl() || derivedWsUrl();
+ui.url.oninput = function(){ storeWsUrl(ui.url.value.trim()); };
+ui.btnConnect.onclick = connect;
+ui.btnDisconnect.onclick = disconnect;
+setConnUi('idle');
+
+// ── Stick (pointer events: works with a finger and with a mouse) ──────────
+// Keeping the pointer means a finger that slides off the control still
+// drives it, and its release is still seen. Where the browser refuses the
+// capture the control simply behaves as an ordinary element.
+function capture(el, pointerId) {
+  try { el.setPointerCapture(pointerId); } catch(_) {}
+}
+
+const stickEl = document.getElementById('stick');
+const knobEl = document.getElementById('knob');
+let stickPointer = null;      // the one pointer that owns the stick
+
+// Knob diameter as a fraction of the base diameter. Must match the width /
+// height of .stick-knob in the stylesheet.
+const KNOB_RATIO = 0.38;
+// Travel of the knob centre: the base radius less the knob radius (and a
+// couple of pixels for the border), so the knob stays inside the ring at
+// full deflection.
+function stickTravelPx(rect) {
+  return Math.max(1, rect.width / 2 - (rect.width * KNOB_RATIO) / 2 - 2);
+}
+
+function setStickFromPointer(ev) {
+  const rect = stickEl.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const travel = stickTravelPx(rect);
+  let dx = ev.clientX - cx;
+  let dy = ev.clientY - cy;
+  // clamp into the circle: dragging outside pins the knob to the rim, it
+  // never leaves the base and the magnitude never exceeds 1.
+  const len = Math.hypot(dx, dy);
+  if (len > travel && len > 0) { dx = dx / len * travel; dy = dy / len * travel; }
+  let nx = dx / travel, ny = dy / travel;
+  // radial deadzone, rescaled so the full 0..1 range is still reachable
+  const r = Math.hypot(nx, ny);
+  if (MAP.STICK_DEADZONE > 0 && r > 0) {
+    if (r < MAP.STICK_DEADZONE) { nx = 0; ny = 0; }
+    else {
+      const scaled = (r - MAP.STICK_DEADZONE) / (1 - MAP.STICK_DEADZONE) / r;
+      nx *= scaled; ny *= scaled;
+    }
+  }
+  ctl.stickX = clamp11(nx);
+  ctl.stickY = clamp11(ny);
+  knobEl.style.transform =
+    'translate(calc(-50% + ' + dx.toFixed(1) + 'px), calc(-50% + ' + dy.toFixed(1) + 'px))';
+}
+
+function releaseStick() {
+  stickPointer = null;
+  ctl.stickX = 0; ctl.stickY = 0;      // auto-centre
+  knobEl.style.transform = 'translate(-50%, -50%)';
+  stickEl.classList.remove('active');
+}
+
+stickEl.addEventListener('pointerdown', function(ev){
+  if (stickPointer !== null) return;   // one finger owns the stick
+  stickPointer = ev.pointerId;
+  capture(stickEl, ev.pointerId);
+  stickEl.classList.add('active');
+  setStickFromPointer(ev);
+  ev.preventDefault();
+});
+stickEl.addEventListener('pointermove', function(ev){
+  if (ev.pointerId !== stickPointer) return;
+  setStickFromPointer(ev);
+  ev.preventDefault();
+});
+function onStickEnd(ev) {
+  if (ev.pointerId !== stickPointer) return;
+  releaseStick();
+  ev.preventDefault();
+}
+stickEl.addEventListener('pointerup', onStickEnd);
+stickEl.addEventListener('pointercancel', onStickEnd);
+// A pointer capture lost to the browser (scroll gesture, tab switch) must
+// still return the stick to neutral rather than leave it deflected.
+stickEl.addEventListener('lostpointercapture', function(ev){
+  if (ev.pointerId === stickPointer) releaseStick();
+});
+
+// ── Momentary buttons ─────────────────────────────────────────────────────
+// Held while the finger is down; released on up / cancel / lost capture, so
+// a finger sliding off the button cannot leave it stuck on.
+const releaseHolds = [];      // filled by bindHold, used by releaseAll
+function bindHold(el, key) {
+  let pid = null;
+  const press = function(ev){
+    if (pid !== null) return;
+    pid = ev.pointerId;
+    capture(el, ev.pointerId);
+    ctl[key] = true;
+    el.classList.add('on');
+    ev.preventDefault();
+  };
+  const forceRelease = function(){
+    pid = null;
+    ctl[key] = false;
+    el.classList.remove('on');
+  };
+  const release = function(ev){
+    if (ev.pointerId !== pid) return;
+    forceRelease();
+  };
+  el.addEventListener('pointerdown', press);
+  el.addEventListener('pointerup', release);
+  el.addEventListener('pointercancel', release);
+  el.addEventListener('lostpointercapture', release);
+  el.addEventListener('contextmenu', function(ev){ ev.preventDefault(); });
+  releaseHolds.push(forceRelease);
+}
+bindHold(document.getElementById('btn-turn-l'), 'turnLeft');
+bindHold(document.getElementById('btn-turn-r'), 'turnRight');
+bindHold(document.getElementById('btn-up'), 'liftUp');
+bindHold(document.getElementById('btn-down'), 'liftDown');
+
+// Anything that could still scroll or zoom the page under a stray gesture.
+document.addEventListener('gesturestart', function(ev){ ev.preventDefault(); });
+document.addEventListener('dblclick', function(ev){ ev.preventDefault(); });
+
+// Losing the page while a control is held (app switch, incoming call, screen
+// lock) must not leave the robot driving: everything goes neutral, and the
+// operator has to touch the control again to move.
+function releaseAll() {
+  releaseStick();
+  releaseHolds.forEach(function(fn){ fn(); });
+}
+window.addEventListener('blur', releaseAll);
+document.addEventListener('visibilitychange', function(){
+  if (document.hidden) releaseAll();
+});
+
+// ── Debug read-out ────────────────────────────────────────────────────────
+function renderDebug(axes, buttons) {
+  const a = axes.map(function(v){ return v.toFixed(3); }).join(', ');
+  const pressed = [];
+  buttons.forEach(function(v, i){ if (v) pressed.push(i + ':' + v); });
+  const text = 'axes: ' + a + '  /  buttons: ' + (pressed.length ? pressed.join(' ') : '-');
+  if (ui.dbg.textContent !== text) ui.dbg.textContent = text;
+}
+
+// ── Loop ──────────────────────────────────────────────────────────────────
+let lastWire = { axes: [], buttons: [] };
+setInterval(function(){
+  const wire = buildWire();
+  lastWire = wire;
+  renderDebug(wire.axes, wire.buttons);
+  send(wire.axes, wire.buttons);
+}, POLL_MS);
+setInterval(retry, RETRY_MS);
+
+// Single, unambiguous target: connect on load, like the one-card PC page.
+connect();
+
+// Read-only hook for checking the values actually going on the wire.
+window.joyspState = function(){
+  return { axes: lastWire.axes.slice(), buttons: lastWire.buttons.slice(),
+           ctl: Object.assign({}, ctl) };
+};
+</script>
+</body>
+</html>

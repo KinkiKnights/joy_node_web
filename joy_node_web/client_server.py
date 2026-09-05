@@ -40,7 +40,9 @@ def parse_args(argv=None):
 def main(args=None):
     cli = parse_args(args)
     app = create_client_app(ws_url=cli.ws_url, ws_port=cli.ws_port)
-    print("serving web client on http://%s:%d/joy" % (cli.host, cli.port))
+    print("serving web client on http://%s:%d/joy (PC) "
+          "/ http://%s:%d/joysp (smartphone)"
+          % (cli.host, cli.port, cli.host, cli.port))
     print("client will connect to %s" % (cli.ws_url or "ws://<this host>:%d/joys" % cli.ws_port))
     uvicorn.run(app, host=cli.host, port=cli.port)
 
