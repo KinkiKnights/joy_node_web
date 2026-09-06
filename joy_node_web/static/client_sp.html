@@ -208,25 +208,26 @@
 // ══════════════════════════════════════════════════════════════════════════
 //  出力マッピング定義（実機に合わせて調整するのはここだけ）
 // ══════════════════════════════════════════════════════════════════════════
-// 送信するメッセージは PC 版 (client.html) と同一スキーマ・同一配列長:
-//   { id, axes: number[4], buttons: number[17] }
-// 配列長は W3C standard gamepad の並び (STD_AXES / STD_BUTTONS) に合わせて
-// あり、使わないスロットは 0 で埋める。受信側 (joy_node) は同じパーサで
-// 処理できる。
+// 送信するメッセージは PC 版 (client.html) と同一スキーマ:
+//   { id, axes: number[4], buttons: number[16] }
+// 並びは W3C standard gamepad (STD_AXES / STD_BUTTONS) と同じで、使わない
+// スロットは 0 で埋める。受信側 (joy_node) は配列長を可変に扱うので、同じ
+// パーサでそのまま処理できる。
 //
 //   axes[0] = stick_l_x, axes[1] = stick_l_y,
 //   axes[2] = stick_r_x, axes[3] = stick_r_y
-//   buttons[0..16] = face_down, face_right, face_left, face_up,
+//   buttons[0..15] = face_down, face_right, face_left, face_up,
 //                    shoulder_l, shoulder_r, trigger_l, trigger_r,
 //                    select, start, stick_l_click, stick_r_click,
-//                    dpad_up, dpad_down, dpad_left, dpad_right, home
+//                    dpad_up, dpad_down, dpad_left, dpad_right
+//   （PC 版はこの後ろに home = buttons[16] が付く）
 //
 // 各コントロールの出力先は { axis: n, ... } か { button: n, value: v } の
 // どちらでも書ける。軸に割り当て直したい / ボタンに割り当て直したい場合は
 // このブロックの該当行を書き換えるだけでよい。
 const MAP = {
   AXES_LEN: 4,        // PC 版 (STD_AXES) と同じ長さ
-  BUTTONS_LEN: 17,    // PC 版 (STD_BUTTONS) と同じ長さ
+  BUTTONS_LEN: 16,    // 実機の割り当てに合わせて 16 個（PC 版は home を含む 17）
 
   // 丸スティック（360°）。値域は -1.0 〜 +1.0。
   //   X: 右が正（W3C Gamepad API と同じ）
@@ -237,13 +238,13 @@ const MAP = {
   // スティックの不感帯（半径方向）。0 にすれば無効。
   STICK_DEADZONE: 0.05,
 
-  // 旋回ボタン。既定は右スティック X 相当の axes[2]。
-  TURN_LEFT:  { axis: 2, value: -1 },
-  TURN_RIGHT: { axis: 2, value: +1 },
+  // 旋回ボタン。実機の割り当てに合わせて buttons へ出す（axes[2] は常に 0）。
+  TURN_LEFT:  { button: 5, value: 1 },
+  TURN_RIGHT: { button: 4, value: 1 },
 
-  // 上下ボタン。既定は D-pad 上 / 下（buttons[12] / buttons[13]）。
-  LIFT_UP:    { button: 12, value: 1 },
-  LIFT_DOWN:  { button: 13, value: 1 },
+  // 上下ボタン。
+  LIFT_UP:    { button: 3, value: 1 },
+  LIFT_DOWN:  { button: 0, value: 1 },
 
   // WebSocket の id フィールド（表示用・任意）
   CLIENT_ID: 'JoyNodeWeb SP (touch)'
