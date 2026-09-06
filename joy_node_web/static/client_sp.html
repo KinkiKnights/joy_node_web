@@ -457,19 +457,37 @@ function wsInit(url) {
   ws.onmessage = function(){ /* the node does not talk back to this page */ };
 }
 
+// Throw away whatever connection state is left, so the next attempt starts
+// from scratch. armed / manualDisconnect are deliberately untouched: only
+// the caller knows whether this is the operator hanging up or the page
+// picking itself up again. The old socket is detached before it is closed,
+// because a socket the page slept through can still read as OPEN long after
+// the phone left the network — trusting it is exactly what wedges the page.
+function dropConnection() {
+  clearConnectTimer();
+  if (conn.ws) {
+    conn.ws.onopen = null; conn.ws.onclose = null;
+    conn.ws.onerror = null; conn.ws.onmessage = null;
+    try { conn.ws.close(); } catch(_) {}
+    conn.ws = null;
+  }
+  conn.trying = false;
+}
+
 function connect() {
-  if (conn.ws && conn.ws.readyState === WebSocket.OPEN) { log('接続済み','inf'); return; }
   const url = ui.url.value.trim();
   if (!url) return;
+  // 接続 always starts over. A stale trying flag or a socket that merely
+  // looks open must never swallow the press: this button is the operator's
+  // last resort when the page has lost the node.
+  dropConnection();
   conn.armed = true;
   conn.manualDisconnect = false;
   wsInit(url);
 }
 
 function disconnect() {
-  clearConnectTimer();
-  if (conn.ws) { conn.ws.onclose = null; conn.ws.close(); conn.ws = null; }
-  conn.trying = false;
+  dropConnection();
   conn.manualDisconnect = true;
   setConnUi('idle');
   log('切断しました', 'err');
@@ -624,10 +642,35 @@ function releaseAll() {
   releaseStick();
   releaseHolds.forEach(function(fn){ fn(); });
 }
+
+// Coming back from the background is the other half of the same story. A
+// phone suspends the page and drops its connection without the page ever
+// seeing a close, so the socket stays readyState OPEN forever: 再接続 skips
+// it as "still connected", the header keeps saying 接続済, and 接続 is not
+// even offered. The page then never reaches the node again. So whenever the
+// page was away, the connection is assumed dead and rebuilt — unless the
+// operator disconnected on purpose, which stays honoured.
+let wentAway = false;
+function onResume() {
+  if (!wentAway || document.hidden) return;
+  wentAway = false;
+  if (!conn.armed || conn.manualDisconnect) return;
+  dropConnection();
+  retry();
+}
+function onAway() {
+  releaseAll();
+  wentAway = true;
+}
 window.addEventListener('blur', releaseAll);
 document.addEventListener('visibilitychange', function(){
-  if (document.hidden) releaseAll();
+  if (document.hidden) onAway(); else onResume();
 });
+// bfcache / app switch on iOS: the page can be frozen and thawed without a
+// visibilitychange pair, so pageshow is the one event that always fires.
+window.addEventListener('pagehide', onAway);
+window.addEventListener('pageshow', onResume);
+window.addEventListener('focus', onResume);
 
 // ── Debug read-out ────────────────────────────────────────────────────────
 function renderDebug(axes, buttons) {
