@@ -65,8 +65,8 @@ Webブラウザ ⇄ ROS2 ノード間の通信仕様と、ノードが Publish �
 |---|---|---|
 | スティック 左右 | `axes[0]` (`stick_l_x`) | -1.0（左）〜 +1.0（右） |
 | スティック 上下 | `axes[1]` (`stick_l_y`) | -1.0（上）〜 +1.0（下）※W3C Gamepad API と同じ符号 |
-| 左旋回 | `buttons[5]` (`shoulder_r`) | 押下 1 / 離すと 0 |
-| 右旋回 | `buttons[4]` (`shoulder_l`) | 押下 1 / 離すと 0 |
+| 左旋回 | `buttons[4]` (`shoulder_l`) | 押下 1 / 離すと 0 |
+| 右旋回 | `buttons[5]` (`shoulder_r`) | 押下 1 / 離すと 0 |
 | 上 | `buttons[3]` (`face_up`) | 押下 1 / 離すと 0 |
 | 下 | `buttons[0]` (`face_down`) | 押下 1 / 離すと 0 |
 
